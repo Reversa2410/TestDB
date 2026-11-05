@@ -235,21 +235,33 @@
 
      ejecutar.bat
 
+     En PowerShell hay que escribir ".\ejecutar.bat": PowerShell no ejecuta
+     programas del directorio actual sin esa ruta explicita. En CMD basta
+     con "ejecutar.bat", y desde el Explorador funciona el doble clic.
+
      Al abrir, la barra inferior debe decir en verde:
-         "OK - 5 cliente(s) recuperado(s) desde la base de datos."
+         "OK - Conexion establecida con NOMBRE-EQUIPO / BD_Comercializadora"
+
+     El listado aparece vacio a proposito: se carga al pulsar "Mostrar tabla"
+     o "Consultar". El mismo boton lo vuelve a ocultar.
 
  PASO 9 - Hacer la demostracion (punto D)
 
-     1. Abrir la app y comprobar que la barra inferior dice OK.
-     2. Llenar los campos y pulsar Guardar.
-        Aparece el aviso "Registro guardado correctamente" con el Id asignado.
-     3. Pulsar Consultar: el nuevo cliente aparece en la grilla.
-     4. Verificar el registro directamente en el SGBD:
+     1. Abrir la app y comprobar que la barra inferior dice OK, con el
+        nombre del servidor y de la base de datos. El listado todavia
+        esta oculto: capturar tambien este estado.
+     2. Pulsar "Mostrar tabla": aparecen los 5 clientes del script.
+        Esta es la consulta inicial al SGBD.
+     3. Llenar los campos y pulsar Guardar.
+        Aparece el aviso "Registro guardado correctamente" con el Id asignado,
+        y la grilla se refresca con el cliente nuevo.
+     4. Pulsar Consultar para releer la tabla desde la base de datos.
+     5. Verificar el registro directamente en el SGBD:
 
             sqlcmd -S localhost -E -C -d BD_Comercializadora -Q "SELECT * FROM dbo.Clientes"
 
         o ejecutar ese mismo SELECT en SQL Server Management Studio.
-     5. Capturar pantalla de los pasos 2, 3 y 4.
+     6. Capturar pantalla de los pasos 1, 3, 4 y 5.
 
      Probar tambien los casos de error, que suman puntos en la rubrica:
        - Dejar un campo vacio y pulsar Guardar -> aviso de validacion.
@@ -859,6 +871,7 @@ public class LimiteTexto extends PlainDocument {
 package gestionclientes;
 
 import java.awt.BorderLayout;
+import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
@@ -904,11 +917,16 @@ public class VentanaClientes extends JFrame {
 
     private final JButton btnGuardar = new JButton("Guardar");
     private final JButton btnConsultar = new JButton("Consultar");
+    private final JButton btnMostrar = new JButton("Mostrar tabla");
     private final JButton btnLimpiar = new JButton("Limpiar");
 
     private final ModeloClientes modelo = new ModeloClientes();
     private final JTable tabla = new JTable(modelo);
     private final JLabel lblEstado = new JLabel();
+
+    /** Zona central: alterna entre el aviso inicial y la grilla. */
+    private final JPanel centro = new JPanel(new CardLayout());
+    private boolean tablaVisible = false;
 
     public VentanaClientes() {
         setTitle("Gestion de Clientes");
@@ -927,18 +945,19 @@ public class VentanaClientes extends JFrame {
         arriba.add(construirPanelBotones());
 
         raiz.add(arriba, BorderLayout.NORTH);
-        raiz.add(construirTabla(), BorderLayout.CENTER);
+        raiz.add(construirCentro(), BorderLayout.CENTER);
         raiz.add(construirBarraEstado(), BorderLayout.SOUTH);
         setContentPane(raiz);
 
         btnGuardar.addActionListener(e -> guardar());
         btnConsultar.addActionListener(e -> consultar());
+        btnMostrar.addActionListener(e -> alternarTabla());
         btnLimpiar.addActionListener(e -> limpiarFormulario());
 
         getRootPane().setDefaultButton(btnGuardar);
 
+        // El listado no se carga al abrir: hay que pedirlo con un boton.
         probarConexionInicial();
-        consultar();
     }
 
     // ---------- Interfaz ----------
@@ -1006,7 +1025,7 @@ public class VentanaClientes extends JFrame {
     private JPanel construirPanelBotones() {
         JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
 
-        for (JButton b : new JButton[] { btnGuardar, btnConsultar, btnLimpiar }) {
+        for (JButton b : new JButton[] { btnGuardar, btnConsultar, btnMostrar, btnLimpiar }) {
             b.setPreferredSize(new Dimension(120, 32));
             panel.add(b);
         }
@@ -1017,6 +1036,25 @@ public class VentanaClientes extends JFrame {
         btnGuardar.setBorderPainted(false);
 
         return panel;
+    }
+
+    /**
+     * Zona central con dos vistas superpuestas: el aviso que se ve al abrir
+     * y la grilla, que solo aparece cuando el usuario la pide.
+     */
+    private JPanel construirCentro() {
+        JLabel aviso = new JLabel(
+                "Pulse \"Mostrar tabla\" o \"Consultar\" para ver los clientes registrados.",
+                SwingConstants.CENTER);
+        aviso.setForeground(Color.GRAY);
+
+        JPanel panelAviso = new JPanel(new BorderLayout());
+        panelAviso.setBorder(BorderFactory.createTitledBorder("Listado de clientes"));
+        panelAviso.add(aviso, BorderLayout.CENTER);
+
+        centro.add(panelAviso, "aviso");
+        centro.add(construirTabla(), "tabla");
+        return centro;
     }
 
     private JScrollPane construirTabla() {
@@ -1064,11 +1102,28 @@ public class VentanaClientes extends JFrame {
         }
     }
 
+    /** Boton "Mostrar tabla": la muestra cargando los datos, o la oculta. */
+    private void alternarTabla() {
+        if (tablaVisible) {
+            mostrarTabla(false);
+            mensaje("Listado oculto.", true);
+        } else {
+            consultar();
+        }
+    }
+
+    private void mostrarTabla(boolean visible) {
+        tablaVisible = visible;
+        ((CardLayout) centro.getLayout()).show(centro, visible ? "tabla" : "aviso");
+        btnMostrar.setText(visible ? "Ocultar tabla" : "Mostrar tabla");
+    }
+
     private void consultar() {
         try {
             List<Cliente> clientes = repo.consultar();
             modelo.reemplazar(clientes);
             ajustarAnchos();
+            mostrarTabla(true);
             mensaje(clientes.size() + " cliente(s) recuperado(s) desde la base de datos.", true);
         } catch (Exception ex) {
             mensaje("Error al consultar los clientes.", false);
@@ -1104,7 +1159,12 @@ public class VentanaClientes extends JFrame {
                     "Registro guardado correctamente.\nIdCliente asignado: " + id,
                     "Exito", JOptionPane.INFORMATION_MESSAGE);
             limpiarFormulario();
-            consultar();
+
+            // Solo se refresca si el listado ya estaba a la vista: guardar no
+            // debe abrir una tabla que el usuario decidio mantener oculta.
+            if (tablaVisible) {
+                consultar();
+            }
         } catch (SQLException ex) {
             if (ClientesRepositorio.esDuplicado(ex)) {
                 // Violacion de UNIQUE en Identificacion o Correo
@@ -1284,8 +1344,6 @@ public final class Main {
         }
     }
 }
-
-
 ================================================================================
  8. COMO FUNCIONA, EN UNA PAGINA
 ================================================================================
