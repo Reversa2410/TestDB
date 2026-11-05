@@ -1,0 +1,967 @@
+================================================================================
+ UNIDAD V - GESTION DE CLIENTES (ARQUITECTURA CLIENTE-SERVIDOR)
+ Guia completa de replicacion paso a paso
+================================================================================
+
+ Stack usado : SQL Server + C# WinForms sobre .NET 10
+ Resultado   : app de escritorio que se conecta a un SGBD real, registra
+               clientes y los consulta en una grilla.
+
+ Esta guia es autocontenida: siguiendo los pasos y copiando los archivos
+ del apartado 6 se reconstruye el proyecto completo desde cero.
+
+
+================================================================================
+ 1. QUE PIDE LA PRACTICA (resumen)
+================================================================================
+
+ A. Base de datos (30 pts)
+    BD "BD_Comercializadora" con tabla "Clientes":
+      IdCliente       INT           PK, autoincremental
+      Nombres         VARCHAR(80)   obligatorio
+      Apellidos       VARCHAR(80)   obligatorio
+      Identificacion  VARCHAR(20)   unico
+      Telefono        VARCHAR(15)   obligatorio
+      Correo          VARCHAR(100)  unico
+      Direccion       VARCHAR(150)  obligatorio
+      Estado          BIT           valor por defecto activo
+    Minimo 5 registros de prueba y una consulta que los liste.
+
+ B. Aplicacion / Presentation Tier (35 pts)
+    Formulario "Gestion de Clientes" con boton Guardar, boton Consultar,
+    grilla de resultados, validacion de campos obligatorios y mensajes
+    de exito y de error.
+
+ C. Cadena de conexion (25 pts)
+    Servidor + puerto + base de datos + usuario y clave, dentro de la app,
+    con una prueba de conexion.
+
+ D. Pruebas (10 pts)
+    Abrir la app, comprobar conexion, registrar un cliente desde la interfaz,
+    consultarlo y verificarlo directamente en el SGBD.
+
+ NO hace falta: UPDATE, DELETE, login, API REST, capas, procedimientos
+ almacenados. Si se permiten componentes visuales y asistentes del IDE.
+ La conexion debe ser real, no simulada.
+
+
+================================================================================
+ 2. REQUISITOS PREVIOS
+================================================================================
+
+ 1) SQL Server instalado y con el servicio corriendo.
+    Comprobar en PowerShell:
+
+        Get-Service MSSQLSERVER
+
+    Debe decir "Running". Si la instancia es SQL Server Express, el servicio
+    se llama MSSQL$SQLEXPRESS y el servidor es "localhost\SQLEXPRESS".
+
+ 2) SDK de .NET 10 (o el que tengan instalado; sirve desde .NET 6 cambiando
+    el TargetFramework). Comprobar:
+
+        dotnet --list-sdks
+
+ 3) Herramienta sqlcmd (viene con SQL Server) o SQL Server Management Studio.
+    Cualquiera de las dos sirve para ejecutar el script.
+
+
+================================================================================
+ 3. PASOS
+================================================================================
+
+ PASO 1 - Crear la carpeta del proyecto
+
+     mkdir "test BD"
+     cd "test BD"
+     mkdir sql
+     mkdir evidencias
+
+ PASO 2 - Crear el script SQL
+
+     Guardar el archivo "sql/01_BD_Comercializadora.sql" con el contenido
+     del apartado 6.1 y ejecutarlo:
+
+         sqlcmd -S localhost -E -C -i "sql/01_BD_Comercializadora.sql"
+
+     Significado de los parametros:
+         -S localhost   servidor
+         -E             autenticacion de Windows
+         -C             confiar en el certificado del servidor
+         -i             archivo de entrada
+
+     Si usan usuario y contrasena de SQL Server en lugar de Windows:
+
+         sqlcmd -S localhost -U sa -P TuClave -C -i "sql/01_BD_Comercializadora.sql"
+
+     Debe terminar mostrando los 5 clientes de prueba.
+
+ PASO 3 - Crear el proyecto de la aplicacion
+
+     dotnet new winforms -o app/GestionClientes
+     cd app/GestionClientes
+     dotnet add package Microsoft.Data.SqlClient
+
+     El comando "dotnet new winforms" genera Form1.cs y Form1.Designer.cs:
+     BORRARLOS. Esta version construye la interfaz por codigo, sin diseñador,
+     para que todo quepa en un solo archivo y sea facil de copiar.
+
+         del Form1.cs
+         del Form1.Designer.cs
+
+ PASO 4 - Copiar los archivos de codigo
+
+     Del apartado 6 copiar, dentro de app/GestionClientes:
+
+         GestionClientes.csproj     (reemplaza el generado)
+         appsettings.json
+         Cliente.cs
+         Conexion.cs
+         ClientesRepositorio.cs
+         FormClientes.cs
+         Program.cs
+
+ PASO 5 - Ajustar la cadena de conexion
+
+     Abrir appsettings.json y dejar en "ConnectionString" la que corresponda
+     al equipo. Casos tipicos:
+
+       Instancia por defecto con autenticacion de Windows:
+         Server=localhost;Database=BD_Comercializadora;Integrated Security=True;TrustServerCertificate=True;
+
+       Instancia SQL Express:
+         Server=localhost\SQLEXPRESS;Database=BD_Comercializadora;Integrated Security=True;TrustServerCertificate=True;
+
+       Con usuario y contrasena de SQL Server:
+         Server=localhost;Database=BD_Comercializadora;User Id=sa;Password=TuClave;TrustServerCertificate=True;
+
+       Con puerto explicito:
+         Server=localhost,1433;Database=BD_Comercializadora;User Id=sa;Password=TuClave;TrustServerCertificate=True;
+
+     OJO: en el JSON la barra invertida se escribe doble. SQLEXPRESS queda asi:
+         "Server=localhost\\SQLEXPRESS;Database=..."
+
+ PASO 6 - Compilar y probar la conexion sin abrir la ventana
+
+     dotnet build
+     dotnet run -- --prueba
+
+     Salida esperada:
+
+         Cadena de conexion : Server=localhost;Database=BD_Comercializadora;...
+         Servidor / BD      : NOMBRE-EQUIPO / BD_Comercializadora
+         Clientes antes     : 5
+         Insertado IdCliente: 6
+         Clientes despues   : 6
+         RESULTADO: OK
+
+     Si da FALLO, el mensaje dice el motivo. Ver el apartado 5.
+
+ PASO 7 - Ejecutar la aplicacion
+
+     dotnet run
+
+     Al abrir, la barra inferior debe decir en verde:
+         "OK - 5 cliente(s) recuperado(s) desde la base de datos."
+
+ PASO 8 - Hacer la demostracion (punto D)
+
+     1. Abrir la app y comprobar que la barra inferior dice OK.
+     2. Llenar los campos y pulsar Guardar.
+        Aparece el aviso "Registro guardado correctamente" con el Id asignado.
+     3. Pulsar Consultar: el nuevo cliente aparece en la grilla.
+     4. Verificar el registro directamente en el SGBD:
+
+            sqlcmd -S localhost -E -C -d BD_Comercializadora -Q "SELECT * FROM dbo.Clientes"
+
+        o ejecutar ese mismo SELECT en SQL Server Management Studio.
+     5. Capturar pantalla de los pasos 2, 3 y 4.
+
+     Probar tambien los casos de error, que suman puntos en la rubrica:
+       - Dejar un campo vacio y pulsar Guardar -> aviso de validacion.
+       - Repetir una Identificacion o un Correo ya existente -> aviso de
+         registro duplicado (lo provocan las restricciones UNIQUE).
+
+
+================================================================================
+ 4. ENTREGABLES Y DONDE SALE CADA UNO
+================================================================================
+
+ 1. Script SQL de creacion              -> sql/01_BD_Comercializadora.sql
+ 2. Proyecto de la aplicacion           -> carpeta app/GestionClientes
+ 3. Evidencia de la cadena de conexion  -> appsettings.json y la salida de
+                                           "dotnet run -- --prueba"
+ 4. Captura de la app funcionando       -> pantallazo de la ventana con la
+                                           grilla llena y la barra en verde
+ 5. Evidencia de un registro hecho      -> pantallazo del aviso "guardado
+    desde la app y almacenado en la BD     correctamente" + pantallazo del
+                                           SELECT ejecutado en el SGBD
+
+ Recomendacion: guardar las capturas en la carpeta evidencias/ y entregar
+ todo comprimido, excluyendo las carpetas bin/ y obj/ (se regeneran solas).
+
+
+================================================================================
+ 5. PROBLEMAS FRECUENTES
+================================================================================
+
+ "La cadena de certificacion fue emitida por una entidad en la que no se confia"
+     Falta TrustServerCertificate=True en la cadena de conexion, o el -C
+     en el comando sqlcmd.
+
+ "A network-related or instance-specific error" / no encuentra el servidor
+     El nombre del servidor esta mal o el servicio no corre. Si es Express,
+     el servidor es localhost\SQLEXPRESS, no localhost. Revisar tambien que
+     el servicio SQL Server Browser este activo cuando se usan instancias
+     con nombre.
+
+ "Login failed for user 'sa'"
+     La autenticacion mixta esta desactivada o la clave es otra. Lo mas
+     rapido en un equipo propio es usar Integrated Security=True.
+
+ "Cannot open database BD_Comercializadora"
+     El script no se ejecuto, o se ejecuto contra otra instancia distinta
+     de la que apunta la cadena de conexion.
+
+ "Invalid object name 'dbo.Clientes'"
+     La base existe pero la tabla no: volver a ejecutar el script completo.
+
+ "Violation of UNIQUE KEY constraint"
+     Es el comportamiento correcto: ya existe un cliente con esa
+     identificacion o ese correo. La app lo traduce a un aviso legible.
+
+ La app abre pero la barra inferior esta en rojo
+     El problema es la cadena de conexion, no el codigo. El cuadro de error
+     muestra la cadena que se intento usar, con la contrasena enmascarada.
+
+ "No se encontro appsettings.json"
+     Falta el bloque <None Update="appsettings.json"> en el .csproj, que es
+     el que lo copia junto al ejecutable al compilar.
+
+
+================================================================================
+ 6. ARCHIVOS DEL PROYECTO (contenido completo)
+================================================================================
+
+
+--------------------------------------------------------------------------------
+ 6.1  sql/01_BD_Comercializadora.sql
+--------------------------------------------------------------------------------
+
+/* =========================================================
+   Unidad V - Arquitectura Cliente-Servidor
+   Script de creacion: BD_Comercializadora (SQL Server)
+   ========================================================= */
+
+-- 1. Crear la base de datos
+IF DB_ID('BD_Comercializadora') IS NULL
+    CREATE DATABASE BD_Comercializadora;
+GO
+
+USE BD_Comercializadora;
+GO
+
+-- 2. Crear la tabla Clientes (3. llave primaria y 4. restricciones incluidas)
+IF OBJECT_ID('dbo.Clientes', 'U') IS NOT NULL
+    DROP TABLE dbo.Clientes;
+GO
+
+CREATE TABLE dbo.Clientes
+(
+    IdCliente      INT           IDENTITY(1,1) NOT NULL,
+    Nombres        VARCHAR(80)   NOT NULL,
+    Apellidos      VARCHAR(80)   NOT NULL,
+    Identificacion VARCHAR(20)   NOT NULL,
+    Telefono       VARCHAR(15)   NOT NULL,
+    Correo         VARCHAR(100)  NOT NULL,
+    Direccion      VARCHAR(150)  NOT NULL,
+    Estado         BIT           NOT NULL CONSTRAINT DF_Clientes_Estado DEFAULT (1),
+
+    CONSTRAINT PK_Clientes            PRIMARY KEY (IdCliente),
+    CONSTRAINT UQ_Clientes_Identif    UNIQUE (Identificacion),
+    CONSTRAINT UQ_Clientes_Correo     UNIQUE (Correo)
+);
+GO
+
+-- 5. Insertar registros de prueba (minimo cinco)
+INSERT INTO dbo.Clientes (Nombres, Apellidos, Identificacion, Telefono, Correo, Direccion)
+VALUES
+    ('Ana',    'Lopez',    '1001001001', '3001112233', 'ana.lopez@correo.com',    'Calle 10 # 5-20'),
+    ('Carlos', 'Ruiz',     '1002002002', '3002223344', 'carlos.ruiz@correo.com',  'Avenida 7 # 45-10'),
+    ('Maria',  'Gomez',    '1003003003', '3003334455', 'maria.gomez@correo.com',  'Carrera 15 # 80-30'),
+    ('Jorge',  'Martinez', '1004004004', '3004445566', 'jorge.martinez@correo.com','Diagonal 22 # 12-05'),
+    ('Lucia',  'Pena',     '1005005005', '3005556677', 'lucia.pena@correo.com',   'Transversal 9 # 33-40');
+GO
+
+-- 6. Consulta de verificacion: todos los clientes registrados
+SELECT IdCliente,
+       Nombres,
+       Apellidos,
+       Identificacion,
+       Telefono,
+       Correo,
+       Direccion,
+       Estado
+FROM dbo.Clientes
+ORDER BY IdCliente;
+GO
+
+
+--------------------------------------------------------------------------------
+ 6.2  app/GestionClientes/GestionClientes.csproj
+--------------------------------------------------------------------------------
+
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>GestionClientes</RootNamespace>
+    <AssemblyName>GestionClientes</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
+
+
+--------------------------------------------------------------------------------
+ 6.3  app/GestionClientes/appsettings.json
+--------------------------------------------------------------------------------
+
+{
+  "// Cadena de conexion (Requerimiento C)": "Ajustar Server/Database/usuario y clave al servidor del laboratorio.",
+
+  "ConnectionString": "Server=localhost;Database=BD_Comercializadora;Integrated Security=True;TrustServerCertificate=True;",
+
+  "// Variante con usuario y contrasena de SQL Server": "Usar esta si el laboratorio entrega credenciales sa/clave.",
+  "ConnectionStringSqlAuth": "Server=localhost;Database=BD_Comercializadora;User Id=sa;Password=TuClave;TrustServerCertificate=True;"
+}
+
+
+--------------------------------------------------------------------------------
+ 6.4  app/GestionClientes/Cliente.cs
+--------------------------------------------------------------------------------
+
+namespace GestionClientes;
+
+/// <summary>Representa una fila de la tabla Clientes.</summary>
+public class Cliente
+{
+    public int Id { get; set; }
+    public string Nombres { get; set; } = "";
+    public string Apellidos { get; set; } = "";
+    public string Identificacion { get; set; } = "";
+    public string Telefono { get; set; } = "";
+    public string Correo { get; set; } = "";
+    public string Direccion { get; set; } = "";
+    public bool Estado { get; set; } = true;
+}
+
+
+--------------------------------------------------------------------------------
+ 6.5  app/GestionClientes/Conexion.cs
+--------------------------------------------------------------------------------
+
+using System.Text.Json;
+
+namespace GestionClientes;
+
+/// <summary>
+/// Requerimiento C: lectura de la cadena de conexion desde appsettings.json.
+/// </summary>
+public static class Conexion
+{
+    private static string? _cadena;
+
+    public static string Cadena
+    {
+        get
+        {
+            if (_cadena is not null) return _cadena;
+
+            var ruta = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+            if (!File.Exists(ruta))
+                throw new FileNotFoundException("No se encontro appsettings.json con la cadena de conexion.", ruta);
+
+            using var doc = JsonDocument.Parse(File.ReadAllText(ruta));
+            if (!doc.RootElement.TryGetProperty("ConnectionString", out var valor))
+                throw new InvalidOperationException("appsettings.json no contiene la clave 'ConnectionString'.");
+
+            _cadena = valor.GetString()
+                      ?? throw new InvalidOperationException("La cadena de conexion esta vacia.");
+            return _cadena;
+        }
+    }
+
+    /// <summary>Version segura para mostrar en pantalla (oculta la contrasena).</summary>
+    public static string CadenaParaMostrar()
+    {
+        var partes = Cadena.Split(';', StringSplitOptions.RemoveEmptyEntries);
+        var visibles = partes.Select(p =>
+        {
+            var clave = p.Split('=')[0].Trim().ToLowerInvariant();
+            return clave is "password" or "pwd" ? clave + "=********" : p.Trim();
+        });
+        return string.Join(";", visibles) + ";";
+    }
+}
+
+
+--------------------------------------------------------------------------------
+ 6.6  app/GestionClientes/ClientesRepositorio.cs
+--------------------------------------------------------------------------------
+
+using Microsoft.Data.SqlClient;
+
+namespace GestionClientes;
+
+/// <summary>
+/// Acceso a datos: unico punto donde la aplicacion habla con el SGBD.
+/// </summary>
+public class ClientesRepositorio
+{
+    /// <summary>Prueba de conexion (Requerimiento C, actividad 6).</summary>
+    public string ProbarConexion()
+    {
+        using var cn = new SqlConnection(Conexion.Cadena);
+        cn.Open();
+        using var cmd = new SqlCommand("SELECT @@SERVERNAME + ' / ' + DB_NAME();", cn);
+        return cmd.ExecuteScalar()?.ToString() ?? "(desconocido)";
+    }
+
+    /// <summary>Consulta todos los clientes registrados.</summary>
+    public List<Cliente> Consultar()
+    {
+        const string sql = @"
+            SELECT IdCliente, Nombres, Apellidos, Identificacion,
+                   Telefono, Correo, Direccion, Estado
+            FROM dbo.Clientes
+            ORDER BY IdCliente;";
+
+        var lista = new List<Cliente>();
+
+        using var cn = new SqlConnection(Conexion.Cadena);
+        cn.Open();
+        using var cmd = new SqlCommand(sql, cn);
+        using var lector = cmd.ExecuteReader();
+
+        while (lector.Read())
+        {
+            lista.Add(new Cliente
+            {
+                Id             = lector.GetInt32(0),
+                Nombres        = lector.GetString(1),
+                Apellidos      = lector.GetString(2),
+                Identificacion = lector.GetString(3),
+                Telefono       = lector.GetString(4),
+                Correo         = lector.GetString(5),
+                Direccion      = lector.GetString(6),
+                Estado         = lector.GetBoolean(7)
+            });
+        }
+
+        return lista;
+    }
+
+    /// <summary>Inserta un cliente y devuelve el IdCliente generado.</summary>
+    public int Guardar(Cliente c)
+    {
+        const string sql = @"
+            INSERT INTO dbo.Clientes
+                (Nombres, Apellidos, Identificacion, Telefono, Correo, Direccion, Estado)
+            VALUES
+                (@Nombres, @Apellidos, @Identificacion, @Telefono, @Correo, @Direccion, @Estado);
+            SELECT CAST(SCOPE_IDENTITY() AS INT);";
+
+        using var cn = new SqlConnection(Conexion.Cadena);
+        cn.Open();
+        using var cmd = new SqlCommand(sql, cn);
+
+        // Parametros: evitan inyeccion SQL y respetan los tipos de la tabla.
+        cmd.Parameters.Add("@Nombres",        System.Data.SqlDbType.VarChar, 80).Value  = c.Nombres;
+        cmd.Parameters.Add("@Apellidos",      System.Data.SqlDbType.VarChar, 80).Value  = c.Apellidos;
+        cmd.Parameters.Add("@Identificacion", System.Data.SqlDbType.VarChar, 20).Value  = c.Identificacion;
+        cmd.Parameters.Add("@Telefono",       System.Data.SqlDbType.VarChar, 15).Value  = c.Telefono;
+        cmd.Parameters.Add("@Correo",         System.Data.SqlDbType.VarChar, 100).Value = c.Correo;
+        cmd.Parameters.Add("@Direccion",      System.Data.SqlDbType.VarChar, 150).Value = c.Direccion;
+        cmd.Parameters.Add("@Estado",         System.Data.SqlDbType.Bit).Value          = c.Estado;
+
+        return Convert.ToInt32(cmd.ExecuteScalar());
+    }
+}
+
+
+--------------------------------------------------------------------------------
+ 6.7  app/GestionClientes/FormClientes.cs
+--------------------------------------------------------------------------------
+
+using System.ComponentModel;
+
+namespace GestionClientes;
+
+/// <summary>
+/// Presentation Tier (Requerimiento B): formulario "Gestion de Clientes".
+/// </summary>
+public class FormClientes : Form
+{
+    private readonly ClientesRepositorio _repo = new();
+
+    // Campos de entrada
+    private readonly TextBox _txtNombres        = new();
+    private readonly TextBox _txtApellidos      = new();
+    private readonly TextBox _txtIdentificacion = new();
+    private readonly TextBox _txtTelefono       = new();
+    private readonly TextBox _txtCorreo         = new();
+    private readonly TextBox _txtDireccion      = new();
+    private readonly CheckBox _chkEstado        = new() { Text = "Activo", Checked = true };
+
+    private readonly Button _btnGuardar   = new() { Text = "Guardar" };
+    private readonly Button _btnConsultar = new() { Text = "Consultar" };
+    private readonly Button _btnLimpiar   = new() { Text = "Limpiar" };
+
+    private readonly DataGridView _grid = new();
+    private readonly Label _lblEstado   = new();
+
+    public FormClientes()
+    {
+        Text = "Gestion de Clientes";
+        Size = new Size(1020, 640);
+        MinimumSize = new Size(820, 540);
+        StartPosition = FormStartPosition.CenterScreen;
+        Font = new Font("Segoe UI", 9F);
+
+        Controls.Add(ConstruirLayout());
+
+        _btnGuardar.Click   += (_, _) => Guardar();
+        _btnConsultar.Click += (_, _) => Consultar();
+        _btnLimpiar.Click   += (_, _) => LimpiarFormulario();
+
+        Load += (_, _) => { ProbarConexionInicial(); Consultar(); };
+    }
+
+    // ---------- Interfaz ----------
+
+    private Control ConstruirLayout()
+    {
+        var raiz = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(12),
+            ColumnCount = 1,
+            RowCount = 4
+        };
+        raiz.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // datos
+        raiz.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // botones
+        raiz.RowStyles.Add(new RowStyle(SizeType.Percent, 100));  // grilla
+        raiz.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // estado
+
+        raiz.Controls.Add(ConstruirPanelDatos(), 0, 0);
+        raiz.Controls.Add(ConstruirPanelBotones(), 0, 1);
+        raiz.Controls.Add(ConstruirGrilla(), 0, 2);
+        raiz.Controls.Add(ConstruirBarraEstado(), 0, 3);
+        return raiz;
+    }
+
+    private Control ConstruirPanelDatos()
+    {
+        var grupo = new GroupBox
+        {
+            Text = "Datos del cliente",
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(10)
+        };
+
+        var tabla = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            ColumnCount = 4,
+            RowCount = 4
+        };
+        tabla.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 135));
+        tabla.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        tabla.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+        tabla.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+
+        void Fila(int fila, string etiqueta1, Control campo1, string? etiqueta2, Control? campo2)
+        {
+            tabla.Controls.Add(new Label
+            {
+                Text = etiqueta1,
+                AutoSize = true,
+                Anchor = AnchorStyles.Left,
+                Margin = new Padding(3, 8, 3, 3)
+            }, 0, fila);
+
+            campo1.Dock = DockStyle.Fill;
+            campo1.Margin = new Padding(3, 4, 12, 4);
+            tabla.Controls.Add(campo1, 1, fila);
+
+            if (etiqueta2 is null || campo2 is null) return;
+
+            tabla.Controls.Add(new Label
+            {
+                Text = etiqueta2,
+                AutoSize = true,
+                Anchor = AnchorStyles.Left,
+                Margin = new Padding(3, 8, 3, 3)
+            }, 2, fila);
+
+            campo2.Dock = DockStyle.Fill;
+            campo2.Margin = new Padding(3, 4, 3, 4);
+            tabla.Controls.Add(campo2, 3, fila);
+        }
+
+        // Longitudes alineadas con las de la tabla Clientes
+        _txtNombres.MaxLength        = 80;
+        _txtApellidos.MaxLength      = 80;
+        _txtIdentificacion.MaxLength = 20;
+        _txtTelefono.MaxLength       = 15;
+        _txtCorreo.MaxLength         = 100;
+        _txtDireccion.MaxLength      = 150;
+
+        Fila(0, "Nombres *",        _txtNombres,        "Apellidos *", _txtApellidos);
+        Fila(1, "Identificacion *", _txtIdentificacion, "Telefono *",  _txtTelefono);
+        Fila(2, "Correo *",         _txtCorreo,         "Direccion *", _txtDireccion);
+        Fila(3, "Estado",           _chkEstado,         null,          null);
+
+        grupo.Controls.Add(tabla);
+        return grupo;
+    }
+
+    private Control ConstruirPanelBotones()
+    {
+        var panel = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            Padding = new Padding(0, 8, 0, 8)
+        };
+
+        foreach (var b in new[] { _btnGuardar, _btnConsultar, _btnLimpiar })
+        {
+            b.AutoSize = false;
+            b.Size = new Size(110, 32);
+            b.Margin = new Padding(0, 0, 8, 0);
+            panel.Controls.Add(b);
+        }
+
+        _btnGuardar.BackColor = Color.FromArgb(0, 120, 212);
+        _btnGuardar.ForeColor = Color.White;
+        _btnGuardar.FlatStyle = FlatStyle.Flat;
+
+        return panel;
+    }
+
+    private Control ConstruirGrilla()
+    {
+        _grid.Dock = DockStyle.Fill;
+        _grid.ReadOnly = true;
+        _grid.AllowUserToAddRows = false;
+        _grid.AllowUserToDeleteRows = false;
+        _grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+        _grid.MultiSelect = false;
+        _grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+        _grid.RowHeadersVisible = false;
+        _grid.BackgroundColor = Color.White;
+        _grid.BorderStyle = BorderStyle.FixedSingle;
+        _grid.EnableHeadersVisualStyles = false;
+        _grid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+        _grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(243, 243, 243);
+        _grid.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(250, 250, 250);
+
+        var grupo = new GroupBox
+        {
+            Text = "Listado de clientes",
+            Dock = DockStyle.Fill,
+            Padding = new Padding(10)
+        };
+        grupo.Controls.Add(_grid);
+        return grupo;
+    }
+
+    private Control ConstruirBarraEstado()
+    {
+        _lblEstado.Dock = DockStyle.Top;
+        _lblEstado.AutoSize = false;
+        _lblEstado.Height = 24;
+        _lblEstado.TextAlign = ContentAlignment.MiddleLeft;
+        _lblEstado.ForeColor = Color.DimGray;
+        return _lblEstado;
+    }
+
+    // ---------- Acciones ----------
+
+    private void ProbarConexionInicial()
+    {
+        try
+        {
+            var servidor = _repo.ProbarConexion();
+            Mensaje($"Conexion establecida con {servidor}", correcto: true);
+        }
+        catch (Exception ex)
+        {
+            Mensaje("Sin conexion con el servidor de base de datos.", correcto: false);
+            MessageBox.Show(
+                $"No se pudo conectar al SGBD.\n\n{ex.Message}\n\nCadena usada:\n{Conexion.CadenaParaMostrar()}",
+                "Error de conexion", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void Consultar()
+    {
+        try
+        {
+            var clientes = _repo.Consultar();
+            _grid.DataSource = new BindingList<Cliente>(clientes);
+            FormatearColumnas();
+            Mensaje($"{clientes.Count} cliente(s) recuperado(s) desde la base de datos.", correcto: true);
+        }
+        catch (Exception ex)
+        {
+            Mensaje("Error al consultar los clientes.", correcto: false);
+            MessageBox.Show($"Error al consultar:\n\n{ex.Message}", "Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void Guardar()
+    {
+        if (!Validar(out var faltante))
+        {
+            Mensaje($"El campo '{faltante}' es obligatorio.", correcto: false);
+            MessageBox.Show($"El campo '{faltante}' es obligatorio.", "Validacion",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        var cliente = new Cliente
+        {
+            Nombres        = _txtNombres.Text.Trim(),
+            Apellidos      = _txtApellidos.Text.Trim(),
+            Identificacion = _txtIdentificacion.Text.Trim(),
+            Telefono       = _txtTelefono.Text.Trim(),
+            Correo         = _txtCorreo.Text.Trim(),
+            Direccion      = _txtDireccion.Text.Trim(),
+            Estado         = _chkEstado.Checked
+        };
+
+        try
+        {
+            var id = _repo.Guardar(cliente);
+            Mensaje($"Cliente guardado correctamente con IdCliente = {id}.", correcto: true);
+            MessageBox.Show($"Registro guardado correctamente.\nIdCliente asignado: {id}",
+                "Exito", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            LimpiarFormulario();
+            Consultar();
+        }
+        catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number is 2601 or 2627)
+        {
+            // Violacion de UNIQUE en Identificacion o Correo
+            Mensaje("Ya existe un cliente con esa identificacion o correo.", correcto: false);
+            MessageBox.Show(
+                "Ya existe un cliente registrado con esa identificacion o ese correo.\n" +
+                "Ambos campos deben ser unicos.",
+                "Registro duplicado", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        catch (Exception ex)
+        {
+            Mensaje("Error al guardar el registro.", correcto: false);
+            MessageBox.Show($"No se pudo guardar el registro.\n\n{ex.Message}", "Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private bool Validar(out string faltante)
+    {
+        var obligatorios = new (string Etiqueta, TextBox Campo)[]
+        {
+            ("Nombres",        _txtNombres),
+            ("Apellidos",      _txtApellidos),
+            ("Identificacion", _txtIdentificacion),
+            ("Telefono",       _txtTelefono),
+            ("Correo",         _txtCorreo),
+            ("Direccion",      _txtDireccion)
+        };
+
+        foreach (var (etiqueta, campo) in obligatorios)
+        {
+            if (string.IsNullOrWhiteSpace(campo.Text))
+            {
+                faltante = etiqueta;
+                campo.Focus();
+                return false;
+            }
+        }
+
+        faltante = "";
+        return true;
+    }
+
+    private void LimpiarFormulario()
+    {
+        foreach (var t in new[] { _txtNombres, _txtApellidos, _txtIdentificacion,
+                                  _txtTelefono, _txtCorreo, _txtDireccion })
+            t.Clear();
+
+        _chkEstado.Checked = true;
+        _txtNombres.Focus();
+    }
+
+    private void FormatearColumnas()
+    {
+        if (_grid.Columns.Count == 0) return;
+
+        var titulos = new Dictionary<string, string>
+        {
+            ["Id"]             = "ID",
+            ["Nombres"]        = "Nombres",
+            ["Apellidos"]      = "Apellidos",
+            ["Identificacion"] = "Identificacion",
+            ["Telefono"]       = "Telefono",
+            ["Correo"]         = "Correo",
+            ["Direccion"]      = "Direccion",
+            ["Estado"]         = "Estado"
+        };
+
+        foreach (DataGridViewColumn col in _grid.Columns)
+            if (titulos.TryGetValue(col.Name, out var titulo))
+                col.HeaderText = titulo;
+
+        _grid.Columns["Id"]!.FillWeight = 28;
+        _grid.Columns["Estado"]!.FillWeight = 45;
+        _grid.Columns["Telefono"]!.FillWeight = 78;
+        _grid.Columns["Identificacion"]!.FillWeight = 85;
+    }
+
+    private void Mensaje(string texto, bool correcto)
+    {
+        _lblEstado.Text = (correcto ? "OK  -  " : "ERROR  -  ") + texto;
+        _lblEstado.ForeColor = correcto ? Color.FromArgb(0, 110, 60) : Color.FromArgb(170, 0, 0);
+    }
+}
+
+
+--------------------------------------------------------------------------------
+ 6.8  app/GestionClientes/Program.cs
+--------------------------------------------------------------------------------
+
+using System.Runtime.InteropServices;
+
+namespace GestionClientes;
+
+internal static class Program
+{
+    // Una aplicacion WinExe no tiene consola propia: la tomamos prestada
+    // de la ventana de comandos que la invoco para el modo --prueba.
+    [DllImport("kernel32.dll")]
+    private static extern bool AttachConsole(int dwProcessId);
+
+    [STAThread]
+    private static int Main(string[] args)
+    {
+        // Modo de verificacion por consola: GestionClientes.exe --prueba
+        // Ejecuta prueba de conexion + insercion + consulta sin abrir la ventana.
+        if (args.Length > 0 && (args[0] == "--prueba" || args[0] == "--selftest"))
+            return PruebaConsola();
+
+        ApplicationConfiguration.Initialize();
+        Application.Run(new FormClientes());
+        return 0;
+    }
+
+    private static int PruebaConsola()
+    {
+        AttachConsole(-1); // -1 = ATTACH_PARENT_PROCESS
+        var repo = new ClientesRepositorio();
+
+        try
+        {
+            Console.WriteLine("Cadena de conexion : " + Conexion.CadenaParaMostrar());
+            Console.WriteLine("Servidor / BD      : " + repo.ProbarConexion());
+
+            var antes = repo.Consultar().Count;
+            Console.WriteLine($"Clientes antes     : {antes}");
+
+            var marca = DateTime.Now.ToString("HHmmssfff");
+            var id = repo.Guardar(new Cliente
+            {
+                Nombres        = "Prueba",
+                Apellidos      = "Consola",
+                Identificacion = "T" + marca,
+                Telefono       = "3000000000",
+                Correo         = $"prueba{marca}@correo.com",
+                Direccion      = "Registro creado por la prueba automatica",
+                Estado         = true
+            });
+            Console.WriteLine($"Insertado IdCliente: {id}");
+
+            var despues = repo.Consultar();
+            Console.WriteLine($"Clientes despues   : {despues.Count}");
+
+            var ok = despues.Count == antes + 1 && despues.Any(c => c.Id == id);
+            Console.WriteLine(ok ? "RESULTADO: OK" : "RESULTADO: FALLO");
+            return ok ? 0 : 1;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("RESULTADO: FALLO - " + ex.Message);
+            return 1;
+        }
+    }
+}
+
+
+================================================================================
+ 7. COMO FUNCIONA, EN UNA PAGINA
+================================================================================
+
+ El flujo que pide la practica es este, y en el codigo se ve asi:
+
+   Presentation Tier          FormClientes.cs
+   (formulario)               recoge los datos y valida que no haya vacios
+          |
+          v
+   Connection String          appsettings.json + Conexion.cs
+   (servidor + BD +           una sola cadena, leida al arrancar
+    credenciales)
+          |
+          v
+   Database Server            ClientesRepositorio.cs
+   (SGBD)                     abre SqlConnection, ejecuta INSERT o SELECT
+
+ Tres detalles que valen puntos y conviene saber explicar:
+
+ 1) Parametros en vez de concatenar texto.
+    El INSERT usa @Nombres, @Apellidos, etc. en lugar de pegar los valores
+    dentro de la cadena SQL. Evita la inyeccion SQL y respeta los tipos y
+    longitudes de las columnas.
+
+ 2) SCOPE_IDENTITY().
+    Despues del INSERT se pide el Id que SQL Server acaba de generar, y por
+    eso la app puede mostrar "IdCliente asignado: 6". Es la prueba de que el
+    registro se guardo en el servidor y no solo en memoria.
+
+ 3) using en cada conexion.
+    "using var cn = new SqlConnection(...)" cierra y devuelve la conexion al
+    pool al terminar el metodo, aunque se lance una excepcion.
+
+ Y un detalle de la interfaz: la grilla se llena con
+ "_grid.DataSource = new BindingList<Cliente>(clientes)". El DataGridView
+ crea las columnas solo, a partir de las propiedades de la clase Cliente.
+

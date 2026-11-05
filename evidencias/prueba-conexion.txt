@@ -1,0 +1,11 @@
+Cadena de conexion : Server=localhost;Database=BD_Comercializadora;Integrated Security=True;TrustServerCertificate=True;
+Servidor / BD      : Kev-Desktop / BD_Comercializadora
+Clientes antes     : 5
+Insertado IdCliente: 6
+Clientes despues   : 6
+RESULTADO: OK
+
+-- Salida de: GestionClientes.exe --prueba
+-- Verifica la cadena de conexion, inserta un registro y lo vuelve a consultar
+-- contra el SGBD real. El registro de prueba (IdCliente 6) se elimino despues
+-- para dejar la tabla con los 5 registros del script.
