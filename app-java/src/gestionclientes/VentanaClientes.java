@@ -1,6 +1,7 @@
 package gestionclientes;
 
 import java.awt.BorderLayout;
+import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
@@ -46,11 +47,16 @@ public class VentanaClientes extends JFrame {
 
     private final JButton btnGuardar = new JButton("Guardar");
     private final JButton btnConsultar = new JButton("Consultar");
+    private final JButton btnMostrar = new JButton("Mostrar tabla");
     private final JButton btnLimpiar = new JButton("Limpiar");
 
     private final ModeloClientes modelo = new ModeloClientes();
     private final JTable tabla = new JTable(modelo);
     private final JLabel lblEstado = new JLabel();
+
+    /** Zona central: alterna entre el aviso inicial y la grilla. */
+    private final JPanel centro = new JPanel(new CardLayout());
+    private boolean tablaVisible = false;
 
     public VentanaClientes() {
         setTitle("Gestion de Clientes");
@@ -69,18 +75,19 @@ public class VentanaClientes extends JFrame {
         arriba.add(construirPanelBotones());
 
         raiz.add(arriba, BorderLayout.NORTH);
-        raiz.add(construirTabla(), BorderLayout.CENTER);
+        raiz.add(construirCentro(), BorderLayout.CENTER);
         raiz.add(construirBarraEstado(), BorderLayout.SOUTH);
         setContentPane(raiz);
 
         btnGuardar.addActionListener(e -> guardar());
         btnConsultar.addActionListener(e -> consultar());
+        btnMostrar.addActionListener(e -> alternarTabla());
         btnLimpiar.addActionListener(e -> limpiarFormulario());
 
         getRootPane().setDefaultButton(btnGuardar);
 
+        // El listado no se carga al abrir: hay que pedirlo con un boton.
         probarConexionInicial();
-        consultar();
     }
 
     // ---------- Interfaz ----------
@@ -148,7 +155,7 @@ public class VentanaClientes extends JFrame {
     private JPanel construirPanelBotones() {
         JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
 
-        for (JButton b : new JButton[] { btnGuardar, btnConsultar, btnLimpiar }) {
+        for (JButton b : new JButton[] { btnGuardar, btnConsultar, btnMostrar, btnLimpiar }) {
             b.setPreferredSize(new Dimension(120, 32));
             panel.add(b);
         }
@@ -159,6 +166,25 @@ public class VentanaClientes extends JFrame {
         btnGuardar.setBorderPainted(false);
 
         return panel;
+    }
+
+    /**
+     * Zona central con dos vistas superpuestas: el aviso que se ve al abrir
+     * y la grilla, que solo aparece cuando el usuario la pide.
+     */
+    private JPanel construirCentro() {
+        JLabel aviso = new JLabel(
+                "Pulse \"Mostrar tabla\" o \"Consultar\" para ver los clientes registrados.",
+                SwingConstants.CENTER);
+        aviso.setForeground(Color.GRAY);
+
+        JPanel panelAviso = new JPanel(new BorderLayout());
+        panelAviso.setBorder(BorderFactory.createTitledBorder("Listado de clientes"));
+        panelAviso.add(aviso, BorderLayout.CENTER);
+
+        centro.add(panelAviso, "aviso");
+        centro.add(construirTabla(), "tabla");
+        return centro;
     }
 
     private JScrollPane construirTabla() {
@@ -206,11 +232,28 @@ public class VentanaClientes extends JFrame {
         }
     }
 
+    /** Boton "Mostrar tabla": la muestra cargando los datos, o la oculta. */
+    private void alternarTabla() {
+        if (tablaVisible) {
+            mostrarTabla(false);
+            mensaje("Listado oculto.", true);
+        } else {
+            consultar();
+        }
+    }
+
+    private void mostrarTabla(boolean visible) {
+        tablaVisible = visible;
+        ((CardLayout) centro.getLayout()).show(centro, visible ? "tabla" : "aviso");
+        btnMostrar.setText(visible ? "Ocultar tabla" : "Mostrar tabla");
+    }
+
     private void consultar() {
         try {
             List<Cliente> clientes = repo.consultar();
             modelo.reemplazar(clientes);
             ajustarAnchos();
+            mostrarTabla(true);
             mensaje(clientes.size() + " cliente(s) recuperado(s) desde la base de datos.", true);
         } catch (Exception ex) {
             mensaje("Error al consultar los clientes.", false);
@@ -246,7 +289,12 @@ public class VentanaClientes extends JFrame {
                     "Registro guardado correctamente.\nIdCliente asignado: " + id,
                     "Exito", JOptionPane.INFORMATION_MESSAGE);
             limpiarFormulario();
-            consultar();
+
+            // Solo se refresca si el listado ya estaba a la vista: guardar no
+            // debe abrir una tabla que el usuario decidio mantener oculta.
+            if (tablaVisible) {
+                consultar();
+            }
         } catch (SQLException ex) {
             if (ClientesRepositorio.esDuplicado(ex)) {
                 // Violacion de UNIQUE en Identificacion o Correo

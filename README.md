@@ -90,6 +90,7 @@ El usuario y la contraseña se leen de `jdbc.usuario` y `jdbc.clave`. La contras
 | Ventana "Gestión de Clientes" | `VentanaClientes.java` |
 | Botón Guardar (INSERT) | `VentanaClientes.guardar()` → `ClientesRepositorio.guardar()` |
 | Botón Consultar (SELECT) | `VentanaClientes.consultar()` → `ClientesRepositorio.consultar()` |
+| Botón Mostrar / Ocultar tabla | `VentanaClientes.alternarTabla()` |
 | Resultados en grilla | `JTable` con un `AbstractTableModel` sobre `List<Cliente>` |
 | Validación de obligatorios | `VentanaClientes.validar()` |
 | Mensajes de éxito y error | `JOptionPane` + barra de estado inferior |
@@ -100,7 +101,8 @@ El usuario y la contraseña se leen de `jdbc.usuario` y `jdbc.clave`. La contras
 
 | Archivo | Contenido |
 |---|---|
-| `evidencias/app-funcionando.png` | Aplicación abierta, conectada y listando clientes |
+| `evidencias/app-inicio-sin-tabla.png` | Estado al abrir: conectada, con el listado aún oculto |
+| `evidencias/app-funcionando.png` | Tras pulsar "Mostrar tabla": los clientes recuperados de la BD |
 | `evidencias/prueba-conexion.txt` | Cadena usada, servidor/BD, inserción y conteo antes/después |
 | `evidencias/verificacion-sgbd.txt` | `SELECT` ejecutado directamente en el SGBD con el registro creado desde la app |
 
@@ -113,6 +115,7 @@ El registro `Prueba / Consola` que aparece en esas salidas lo insertó la aplica
 - El `IdCliente` generado se recupera con `getGeneratedKeys()`, y es lo que la app muestra al guardar.
 - La violación de `UNIQUE` en `Identificacion` o `Correo` (error 1062 de MariaDB) se traduce a un mensaje legible en vez de mostrar la excepción del SGBD.
 - Las longitudes máximas de los campos de texto coinciden con las de las columnas de la tabla.
+- El listado no se carga al abrir la ventana: aparece al pulsar "Mostrar tabla" o "Consultar", y el mismo botón lo vuelve a ocultar. La zona central usa un `CardLayout` que alterna entre un aviso y la grilla. Guardar un cliente solo refresca la grilla si ya estaba visible.
 - No se implementan UPDATE, DELETE, autenticación ni API REST: la práctica los excluye expresamente.
 
 ## Historial
