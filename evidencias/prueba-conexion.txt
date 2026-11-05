@@ -1,4 +1,4 @@
-Cadena de conexion : jdbc:sqlserver://localhost;databaseName=BD_Comercializadora;integratedSecurity=true;encrypt=true;trustServerCertificate=true;
+Cadena de conexion : jdbc:sqlserver://localhost;databaseName=BD_Comercializadora;integratedSecurity=true;encrypt=true;trustServerCertificate=true;sendStringParametersAsUnicode=false;
 WARNING: A restricted method in java.lang.System has been called
 WARNING: java.lang.System::loadLibrary has been called by com.microsoft.sqlserver.jdbc.AuthenticationJNI in an unnamed module (file:/C:/Users/urbin/OneDrive/Escritorio/proyectos/test%20BD/app-java/lib/mssql-jdbc-13.6.2.jre11.jar)
 WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
@@ -12,7 +12,7 @@ RESULTADO: OK
 
 -- Salida de: ejecutar.bat --prueba  (aplicacion Java)
 -- Verifica la cadena de conexion, inserta un registro y lo vuelve a consultar
--- contra el SGBD real. El registro de prueba (IdCliente 6) se elimino despues
--- para dejar la tabla con los 5 registros del script.
+-- contra el SGBD real. El registro de prueba se elimino despues para dejar la
+-- tabla con los 5 registros del script.
 -- Los avisos WARNING son del JDK 27 al cargar la DLL de autenticacion de
 -- Windows: son informativos y no afectan al funcionamiento.

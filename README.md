@@ -104,6 +104,7 @@ El registro `Prueba / Consola` que aparece en esas salidas lo insertó la aplica
 ## Notas de implementación
 
 - Todas las consultas usan `PreparedStatement` con parámetros, no concatenación de cadenas.
+- La URL lleva `sendStringParametersAsUnicode=false`. Sin eso el driver envía cada `String` como `nvarchar(4000)`, lo que obliga a SQL Server a una conversión implícita contra las columnas `varchar` y, en un `WHERE`, impide aprovechar el índice. Con el ajuste los parámetros viajan como `varchar`, verificable en `sys.dm_exec_cached_plans`.
 - El `IdCliente` generado se recupera con `getGeneratedKeys()`, y es lo que la app muestra al guardar.
 - La violación de `UNIQUE` en `Identificacion` o `Correo` (errores 2601/2627) se traduce a un mensaje legible en vez de mostrar la excepción de SQL Server.
 - Las longitudes máximas de los campos de texto coinciden con las de las columnas de la tabla.

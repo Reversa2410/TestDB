@@ -179,22 +179,30 @@
      Casos tipicos:
 
        Instancia por defecto, autenticacion de Windows:
-         jdbc:sqlserver://localhost;databaseName=BD_Comercializadora;integratedSecurity=true;encrypt=true;trustServerCertificate=true
+         jdbc:sqlserver://localhost;databaseName=BD_Comercializadora;integratedSecurity=true;encrypt=true;trustServerCertificate=true;sendStringParametersAsUnicode=false
 
        Instancia SQL Express (la barra invertida va DOBLE en un .properties):
-         jdbc:sqlserver://localhost\\SQLEXPRESS;databaseName=BD_Comercializadora;integratedSecurity=true;encrypt=true;trustServerCertificate=true
+         jdbc:sqlserver://localhost\\SQLEXPRESS;databaseName=BD_Comercializadora;integratedSecurity=true;encrypt=true;trustServerCertificate=true;sendStringParametersAsUnicode=false
 
        Con usuario y contrasena de SQL Server:
-         jdbc.url=jdbc:sqlserver://localhost:1433;databaseName=BD_Comercializadora;encrypt=true;trustServerCertificate=true
+         jdbc.url=jdbc:sqlserver://localhost:1433;databaseName=BD_Comercializadora;encrypt=true;trustServerCertificate=true;sendStringParametersAsUnicode=false
          jdbc.usuario=sa
          jdbc.clave=TuClave
 
        Servidor remoto:
-         jdbc:sqlserver://192.168.1.50:1433;databaseName=BD_Comercializadora;encrypt=true;trustServerCertificate=true
+         jdbc:sqlserver://192.168.1.50:1433;databaseName=BD_Comercializadora;encrypt=true;trustServerCertificate=true;sendStringParametersAsUnicode=false
 
      trustServerCertificate=true es necesario porque el driver cifra la
      conexion por defecto y el certificado de un servidor local no esta
      firmado por una entidad de confianza.
+
+     sendStringParametersAsUnicode=false hace que los parametros de texto
+     viajen como varchar y no como nvarchar(4000), que es el valor por
+     defecto del driver. Las columnas de la tabla son varchar, asi que sin
+     ese ajuste SQL Server tendria que convertir el tipo en cada parametro
+     y, en una clausula WHERE, no podria aprovechar el indice.
+     Se comprueba en sys.dm_exec_cached_plans: el plan debe decir
+     (@P0 varchar(8000), ...) y no (@P0 nvarchar(4000), ...).
 
  PASO 6 - Compilar
 
@@ -401,13 +409,20 @@ GO
 # --- Opcion 1: autenticacion de Windows (la que esta activa) ---------
 # Necesita mssql-jdbc_auth-<version>.x64.dll en la carpeta lib,
 # que es lo que hacen compilar.bat y ejecutar.bat.
-jdbc.url=jdbc:sqlserver://localhost;databaseName=BD_Comercializadora;integratedSecurity=true;encrypt=true;trustServerCertificate=true
+jdbc.url=jdbc:sqlserver://localhost;databaseName=BD_Comercializadora;integratedSecurity=true;encrypt=true;trustServerCertificate=true;sendStringParametersAsUnicode=false
 
 # --- Opcion 2: usuario y contrasena de SQL Server --------------------
 # Comentar la linea de arriba, descomentar estas tres y poner la clave.
-#jdbc.url=jdbc:sqlserver://localhost:1433;databaseName=BD_Comercializadora;encrypt=true;trustServerCertificate=true
+#jdbc.url=jdbc:sqlserver://localhost:1433;databaseName=BD_Comercializadora;encrypt=true;trustServerCertificate=true;sendStringParametersAsUnicode=false
 #jdbc.usuario=sa
 #jdbc.clave=TuClave
+
+# --- Por que sendStringParametersAsUnicode=false ----------------------
+# Por defecto el driver envia todo String como nvarchar(4000). Como las
+# columnas de la tabla son varchar, eso obliga a SQL Server a una
+# conversion implicita en cada parametro y, en un WHERE, impide usar el
+# indice (busqueda por rastreo en vez de por busqueda). Con este ajuste
+# los parametros viajan como varchar y coinciden con el tipo declarado.
 
 # --- Otras variantes utiles ------------------------------------------
 # Instancia SQL Express:
@@ -1289,23 +1304,30 @@ public final class Main {
    Database Server            ClientesRepositorio.java
    (SGBD)                     abre la Connection y ejecuta INSERT o SELECT
 
- Cuatro detalles que valen puntos y conviene saber explicar:
+ Cinco detalles que valen puntos y conviene saber explicar:
 
  1) PreparedStatement en vez de concatenar texto.
     El INSERT usa ? y luego setString(1, ...), en lugar de pegar los valores
-    dentro de la cadena SQL. Evita la inyeccion SQL y respeta los tipos y
-    longitudes de las columnas.
+    dentro de la cadena SQL. El texto del usuario viaja fuera de la sentencia,
+    en el protocolo, asi que nunca se reinterpreta como SQL: de ahi que no
+    haya inyeccion. Ademas el plan se cachea como "Prepared" y se reutiliza.
 
- 2) getGeneratedKeys().
-    Despues del INSERT se pide el Id que SQL Server acaba de generar, y por
-    eso la app puede mostrar "IdCliente asignado: 6". Es la prueba de que el
-    registro se guardo en el servidor y no solo en memoria.
+ 2) Tipos de parametro alineados con la tabla.
+    sendStringParametersAsUnicode=false evita que cada String se envie como
+    nvarchar(4000) contra columnas varchar. Sin eso hay conversion implicita
+    y, en un WHERE, el indice deja de usarse.
 
- 3) try-with-resources.
-    "try (Connection cn = Conexion.abrir(); ...)" cierra la conexion y el
-    statement al terminar el bloque, aunque se lance una excepcion.
+ 3) getGeneratedKeys().
+    Devuelve el IDENTITY que SQL Server acaba de asignar, en el mismo viaje
+    del INSERT. Es la prueba de que el registro se guardo en el servidor y
+    no solo en memoria.
 
- 4) AbstractTableModel.
+ 4) try-with-resources.
+    Cierra Connection, PreparedStatement y ResultSet al salir del bloque,
+    aunque se lance una excepcion. Sin eso las conexiones se filtran y el
+    pool acaba agotandose.
+
+ 5) AbstractTableModel.
     La JTable no sabe nada de la clase Cliente: el modelo ModeloClientes
     traduce la lista a filas y columnas, y getColumnClass hace que la
     columna Estado se pinte como casilla de verificacion.
@@ -1324,4 +1346,55 @@ public final class Main {
    Conecta por memoria compartida     Exige TCP/IP habilitado
 
  El script SQL es exactamente el mismo en las dos versiones.
+
+
+================================================================================
+ 9. COMPROBACIONES PARA LA SUSTENTACION
+================================================================================
+
+ Consultas que demuestran, con datos del servidor, lo que afirma el informe.
+
+ Estructura real de la tabla:
+
+   SELECT c.name, t.name AS tipo, c.max_length, c.is_nullable, c.is_identity
+   FROM sys.columns c JOIN sys.types t ON t.user_type_id = c.user_type_id
+   WHERE c.object_id = OBJECT_ID('dbo.Clientes') ORDER BY c.column_id;
+
+ Restricciones declaradas:
+
+   SELECT name, type_desc FROM sys.key_constraints
+   WHERE parent_object_id = OBJECT_ID('dbo.Clientes')
+   UNION ALL
+   SELECT name, 'DEFAULT_CONSTRAINT' FROM sys.default_constraints
+   WHERE parent_object_id = OBJECT_ID('dbo.Clientes');
+
+ Indices que respaldan PK y UNIQUE (la PK crea uno agrupado, cada UNIQUE
+ uno no agrupado):
+
+   SELECT name, type_desc, is_unique, is_primary_key, is_unique_constraint
+   FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.Clientes') AND name IS NOT NULL;
+
+ Como esta conectada la aplicacion (ejecutar mientras la app esta abierta,
+ o desde la propia app): transporte, cifrado y esquema de autenticacion:
+
+   SELECT net_transport, encrypt_option, auth_scheme, local_tcp_port
+   FROM sys.dm_exec_connections WHERE session_id = @@SPID;
+
+ Parametrizacion y reutilizacion del plan:
+
+   SELECT cp.objtype, cp.usecounts, st.text
+   FROM sys.dm_exec_cached_plans cp
+   CROSS APPLY sys.dm_exec_sql_text(cp.plan_handle) st
+   WHERE st.text LIKE '%INSERT INTO dbo.Clientes%';
+
+   objtype debe ser "Prepared" y el texto debe empezar con la lista de
+   parametros tipados, (@P0 varchar(8000), ...). Si dijera "Adhoc" con los
+   valores incrustados, la aplicacion estaria concatenando cadenas.
+
+ Que la restriccion UNIQUE la impone el motor y no la aplicacion:
+
+   INSERT INTO dbo.Clientes (Nombres, Apellidos, Identificacion, Telefono, Correo, Direccion)
+   VALUES ('Repetido','Repetido','1001001001','3000000000','otro@correo.com','x');
+
+   Debe fallar con el error 2627 sobre UQ_Clientes_Identif.
 
