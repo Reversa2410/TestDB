@@ -2,9 +2,9 @@
 
 Implementación de la práctica descrita en `Unidad V.pdf`. Resumen de requisitos en [TAREAS.md](TAREAS.md).
 
-Para reconstruir el proyecto desde cero (pasos, comandos, código completo y errores frecuentes): [GUIA-REPLICACION.txt](GUIA-REPLICACION.txt).
+Para reconstruir el proyecto desde cero (pasos, comandos, código completo y errores frecuentes): [GUIA-REPLICACION.txt](GUIA-REPLICACION.txt). La guía conserva la versión original con SQL Server por motivos históricos.
 
-**Stack:** SQL Server + Java 17+ con Swing y el driver JDBC oficial de Microsoft (`mssql-jdbc`).
+**Stack:** MariaDB 13 + Java 17+ con Swing y el conector JDBC oficial de MariaDB (`mariadb-java-client`, administrado por Maven).
 
 ## Estructura
 
@@ -12,9 +12,9 @@ Para reconstruir el proyecto desde cero (pasos, comandos, código completo y err
 sql/01_BD_Comercializadora.sql   Script de BD, tabla, restricciones y 5 registros
 app-java/                        Proyecto de la aplicación (Presentation Tier)
   conexion.properties            Cadena de conexión
-  compilar.bat / ejecutar.bat    Compilar y ejecutar sin Maven ni IDE
-  pom.xml                        Alternativa para quien use Maven o un IDE
-  lib/                           Driver JDBC y DLL de autenticación de Windows
+  compilar.sh / ejecutar.sh      Compilar y ejecutar en Linux/macOS
+  compilar.bat / ejecutar.bat    Compilar y ejecutar en Windows
+  pom.xml                        Dependencias y configuración de Maven
   src/gestionclientes/
     Cliente.java                 Modelo de una fila de la tabla
     Conexion.java                Lectura de la cadena de conexión
@@ -27,55 +27,60 @@ evidencias/                      Capturas y salidas para la entrega
 
 ## Puesta en marcha
 
-Crear la base de datos:
+Requisitos: JDK 17 o superior, Maven y MariaDB en marcha.
+
+Crear la base de datos y cargar los 5 registros de prueba:
 
 ```bash
-sqlcmd -S localhost -E -C -i "sql/01_BD_Comercializadora.sql"
+mariadb -u root -p < "sql/01_BD_Comercializadora.sql"
 ```
 
-Compilar y ejecutar (doble clic también funciona):
+Revisar `app-java/conexion.properties` y ajustar usuario y contraseña:
+
+```properties
+jdbc.url=jdbc:mariadb://localhost:3306/BD_Comercializadora
+jdbc.usuario=root
+jdbc.clave=TuClave
+```
+
+Compilar y ejecutar:
 
 ```bash
-cd app-java && compilar.bat
+cd app-java && ./compilar.sh
 ```
 
 ```bash
-cd app-java && ejecutar.bat
+cd app-java && ./ejecutar.sh
 ```
 
 Prueba de conexión por consola, sin abrir la ventana:
 
 ```bash
-cd app-java && ejecutar.bat --prueba
+cd app-java && ./ejecutar.sh --prueba
 ```
 
-## Requisito del servidor: TCP/IP
+También se puede usar Maven directamente:
 
-El driver JDBC **solo habla TCP/IP**. SQL Server trae ese protocolo deshabilitado por defecto en muchas instalaciones, y entonces la app falla con *"No se pudo realizar la conexión TCP/IP al host localhost, puerto 1433"*.
+```bash
+cd app-java
+mvn compile
+mvn exec:java -Dexec.args="--prueba"
+mvn exec:java
+```
 
-Para habilitarlo: Administrador de configuración de SQL Server → Configuración de red de SQL Server → Protocolos de *(instancia)* → TCP/IP → Habilitado = Sí, y reiniciar el servicio SQL Server.
-
-En esta máquina ya quedó habilitado y escuchando en el puerto 1433.
+En Windows, usar `compilar.bat` y `ejecutar.bat`.
 
 ## Cadena de conexión
 
 Está en `app-java/conexion.properties`, clave `jdbc.url`. El archivo se lee en tiempo de ejecución, así que se puede cambiar de servidor sin recompilar.
 
 ```
-jdbc:sqlserver://localhost;databaseName=BD_Comercializadora;integratedSecurity=true;encrypt=true;trustServerCertificate=true
+jdbc:mariadb://localhost:3306/BD_Comercializadora
 ```
 
-El mismo archivo incluye comentada la variante con usuario y contraseña de SQL Server, por si el laboratorio entrega credenciales `sa`:
+El usuario y la contraseña se leen de `jdbc.usuario` y `jdbc.clave`. La contraseña nunca se muestra en pantalla: `Conexion.cadenaParaMostrar()` la enmascara antes de incluirla en los mensajes de error.
 
-```
-jdbc.url=jdbc:sqlserver://localhost:1433;databaseName=BD_Comercializadora;encrypt=true;trustServerCertificate=true
-jdbc.usuario=sa
-jdbc.clave=TuClave
-```
-
-La contraseña nunca se muestra en pantalla: `Conexion.cadenaParaMostrar()` la enmascara antes de incluirla en los mensajes de error.
-
-La autenticación de Windows necesita `mssql-jdbc_auth-13.6.2.x64.dll`, que está en `lib/` y que `ejecutar.bat` pasa a la JVM con `-Djava.library.path`. Con usuario y contraseña esa DLL no hace falta.
+> No subir al repositorio una contraseña real. Si se va a publicar el proyecto, dejar un valor de ejemplo y configurar la credencial localmente.
 
 ## Cobertura de la rúbrica
 
@@ -99,18 +104,17 @@ La autenticación de Windows necesita `mssql-jdbc_auth-13.6.2.x64.dll`, que est�
 | `evidencias/prueba-conexion.txt` | Cadena usada, servidor/BD, inserción y conteo antes/después |
 | `evidencias/verificacion-sgbd.txt` | `SELECT` ejecutado directamente en el SGBD con el registro creado desde la app |
 
-El registro `Prueba / Consola` que aparece en esas salidas lo insertó la aplicación y se confirmó después consultando el SGBD por separado: es la evidencia del punto D de la práctica. Se eliminó al terminar para dejar la tabla con los 5 registros del script.
+El registro `Prueba / Consola` que aparece en esas salidas lo insertó la aplicación y se confirmó después consultando el SGBD por separado: es la evidencia del punto D de la práctica.
 
 ## Notas de implementación
 
 - Todas las consultas usan `PreparedStatement` con parámetros, no concatenación de cadenas.
-- La URL lleva `sendStringParametersAsUnicode=false`. Sin eso el driver envía cada `String` como `nvarchar(4000)`, lo que obliga a SQL Server a una conversión implícita contra las columnas `varchar` y, en un `WHERE`, impide aprovechar el índice. Con el ajuste los parámetros viajan como `varchar`, verificable en `sys.dm_exec_cached_plans`.
+- Las columnas de texto son `VARCHAR` y `Estado` es `TINYINT(1)`, equivalente al `BIT` de SQL Server.
 - El `IdCliente` generado se recupera con `getGeneratedKeys()`, y es lo que la app muestra al guardar.
-- La violación de `UNIQUE` en `Identificacion` o `Correo` (errores 2601/2627) se traduce a un mensaje legible en vez de mostrar la excepción de SQL Server.
+- La violación de `UNIQUE` en `Identificacion` o `Correo` (error 1062 de MariaDB) se traduce a un mensaje legible en vez de mostrar la excepción del SGBD.
 - Las longitudes máximas de los campos de texto coinciden con las de las columnas de la tabla.
-- Al ejecutar con JDK 22 o superior aparecen avisos `WARNING ... restricted method`: son del JDK al cargar la DLL de autenticación y no afectan al funcionamiento.
 - No se implementan UPDATE, DELETE, autenticación ni API REST: la práctica los excluye expresamente.
 
 ## Historial
 
-La primera versión de esta práctica se hizo en C# con WinForms; está en el commit `84e22dd` por si hiciera falta consultarla. El script SQL no cambió al pasar a Java.
+La primera versión de esta práctica se hizo en C# con WinForms; después se portó a Java con SQL Server y finalmente se migró a MariaDB. Las versiones anteriores están en el historial de Git.

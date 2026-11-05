@@ -5,7 +5,6 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.Types;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -14,14 +13,14 @@ import java.util.List;
  */
 public class ClientesRepositorio {
 
-    /** Codigos de SQL Server para violacion de restriccion UNIQUE. */
+    /** Codigo de MariaDB para violacion de restriccion UNIQUE. */
     public static boolean esDuplicado(SQLException e) {
-        return e.getErrorCode() == 2601 || e.getErrorCode() == 2627;
+        return e.getErrorCode() == 1062;
     }
 
     /** Prueba de conexion (Requerimiento C, actividad 6). */
     public String probarConexion() throws SQLException {
-        String sql = "SELECT @@SERVERNAME + ' / ' + DB_NAME();";
+        String sql = "SELECT CONCAT(@@hostname, ' / ', DATABASE());";
         try (Connection cn = Conexion.abrir();
              PreparedStatement cmd = cn.prepareStatement(sql);
              ResultSet r = cmd.executeQuery()) {
@@ -35,7 +34,7 @@ public class ClientesRepositorio {
         String sql = """
                 SELECT IdCliente, Nombres, Apellidos, Identificacion,
                        Telefono, Correo, Direccion, Estado
-                FROM dbo.Clientes
+                FROM Clientes
                 ORDER BY IdCliente""";
 
         List<Cliente> lista = new ArrayList<>();
@@ -64,7 +63,7 @@ public class ClientesRepositorio {
     /** Inserta un cliente y devuelve el IdCliente generado. */
     public int guardar(Cliente c) throws SQLException {
         String sql = """
-                INSERT INTO dbo.Clientes
+                INSERT INTO Clientes
                     (Nombres, Apellidos, Identificacion, Telefono, Correo, Direccion, Estado)
                 VALUES
                     (?, ?, ?, ?, ?, ?, ?)""";
@@ -79,7 +78,7 @@ public class ClientesRepositorio {
             cmd.setString(4, c.getTelefono());
             cmd.setString(5, c.getCorreo());
             cmd.setString(6, c.getDireccion());
-            cmd.setObject(7, c.isEstado(), Types.BIT);
+            cmd.setBoolean(7, c.isEstado());
 
             cmd.executeUpdate();
 

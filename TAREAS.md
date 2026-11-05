@@ -31,8 +31,8 @@ Formulario único: **"Gestión de Clientes"**.
 Configurada dentro de la app, con servidor + puerto + BD + usuario + contraseña. Debe incluir prueba de conexión.
 
 ```
-SQL Server: Server=localhost;Database=BD_Comercializadora;User Id=sa;Password=TuClave;TrustServerCertificate=True;
-MySQL:      Server=localhost;Port=3306;Database=BD_Comercializadora;Uid=root;Pwd=TuClave;
+MariaDB: jdbc:mariadb://localhost:3306/BD_Comercializadora;user=root;password=TuClave;
+MySQL:   Server=localhost;Port=3306;Database=BD_Comercializadora;Uid=root;Pwd=TuClave;
 ```
 
 ## 4. Pruebas (10 pts)
