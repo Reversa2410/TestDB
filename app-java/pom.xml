@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Alternativa para quien tenga Maven o abra el proyecto en IntelliJ / Eclipse.
+  Sin Maven se puede usar compilar.bat y ejecutar.bat, que ya traen el driver
+  en la carpeta lib.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>edu.unidadv</groupId>
+  <artifactId>gestion-clientes</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+  <name>Gestion de Clientes</name>
+
+  <properties>
+    <maven.compiler.release>17</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <exec.mainClass>gestionclientes.Main</exec.mainClass>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.microsoft.sqlserver</groupId>
+      <artifactId>mssql-jdbc</artifactId>
+      <version>13.6.2.jre11</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <!-- El codigo esta en src/ en vez de src/main/java para que la version
+         sin Maven sea mas corta de explicar. -->
+    <sourceDirectory>src</sourceDirectory>
+
+    <resources>
+      <resource>
+        <directory>.</directory>
+        <includes>
+          <include>conexion.properties</include>
+        </includes>
+      </resource>
+    </resources>
+
+    <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.5.0</version>
+        <configuration>
+          <mainClass>gestionclientes.Main</mainClass>
+          <!-- Necesario para la autenticacion de Windows -->
+          <systemProperties>
+            <systemProperty>
+              <key>java.library.path</key>
+              <value>lib</value>
+            </systemProperty>
+          </systemProperties>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>

@@ -1,2 +1,6 @@
+# Compilados Java
 bin/
+target/
+
+# Compilados .NET (version anterior del proyecto)
 obj/

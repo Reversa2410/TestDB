@@ -3,12 +3,15 @@
  Guia completa de replicacion paso a paso
 ================================================================================
 
- Stack usado : SQL Server + C# WinForms sobre .NET 10
+ Stack usado : SQL Server + Java (Swing) con el driver JDBC oficial
  Resultado   : app de escritorio que se conecta a un SGBD real, registra
                clientes y los consulta en una grilla.
 
  Esta guia es autocontenida: siguiendo los pasos y copiando los archivos
- del apartado 6 se reconstruye el proyecto completo desde cero.
+ del apartado 7 se reconstruye el proyecto completo desde cero.
+
+ No hace falta Maven ni un IDE: basta con el JDK y los dos .bat incluidos.
+ Quien prefiera IntelliJ o Eclipse puede abrir el pom.xml.
 
 
 ================================================================================
@@ -28,7 +31,7 @@
     Minimo 5 registros de prueba y una consulta que los liste.
 
  B. Aplicacion / Presentation Tier (35 pts)
-    Formulario "Gestion de Clientes" con boton Guardar, boton Consultar,
+    Ventana "Gestion de Clientes" con boton Guardar, boton Consultar,
     grilla de resultados, validacion de campos obligatorios y mensajes
     de exito y de error.
 
@@ -57,30 +60,82 @@
     Debe decir "Running". Si la instancia es SQL Server Express, el servicio
     se llama MSSQL$SQLEXPRESS y el servidor es "localhost\SQLEXPRESS".
 
- 2) SDK de .NET 10 (o el que tengan instalado; sirve desde .NET 6 cambiando
-    el TargetFramework). Comprobar:
+ 2) JDK 17 o superior. Comprobar:
 
-        dotnet --list-sdks
+        java -version
 
- 3) Herramienta sqlcmd (viene con SQL Server) o SQL Server Management Studio.
-    Cualquiera de las dos sirve para ejecutar el script.
+    Si el comando no existe, el JDK esta instalado pero no en el PATH.
+    No es un problema: compilar.bat y ejecutar.bat lo buscan solos en
+    C:\Program Files\Java, en Eclipse Adoptium y en JAVA_HOME.
+
+ 3) Herramienta sqlcmd (viene con SQL Server) o SQL Server Management Studio,
+    para ejecutar el script y para comprobar los registros al final.
+
+ 4) El driver JDBC de Microsoft. Ya viene en la carpeta lib del proyecto.
+    Si hay que descargarlo de nuevo, son dos archivos de Maven Central:
+
+      https://repo1.maven.org/maven2/com/microsoft/sqlserver/mssql-jdbc/13.6.2.jre11/mssql-jdbc-13.6.2.jre11.jar
+      https://repo1.maven.org/maven2/com/microsoft/sqlserver/mssql-jdbc_auth/13.6.2.x64/mssql-jdbc_auth-13.6.2.x64.dll
+
+    El .jar es el driver. El .dll solo hace falta para la autenticacion de
+    Windows; con usuario y contrasena de SQL Server no se usa.
 
 
 ================================================================================
- 3. PASOS
+ 3. HABILITAR TCP/IP EN SQL SERVER  (PASO IMPRESCINDIBLE)
 ================================================================================
 
- PASO 1 - Crear la carpeta del proyecto
+ Este es el paso donde se atasca casi todo el mundo al usar Java.
+
+ El driver JDBC solo se comunica por TCP/IP. SQL Server trae ese protocolo
+ DESHABILITADO por defecto en muchas instalaciones y, mientras lo este, la
+ aplicacion fallara con este mensaje:
+
+     No se pudo realizar la conexion TCP/IP al host localhost, puerto 1433.
+     Error: "Connection refused..."
+
+ Que no confunda: sqlcmd y las aplicaciones .NET pueden conectarse igual,
+ porque usan memoria compartida cuando el servidor esta en el mismo equipo.
+ Java no tiene esa opcion.
+
+ Para habilitarlo:
+
+   1. Abrir "Administrador de configuracion de SQL Server"
+      (SQLServerManager*.msc desde Ejecutar, si no aparece en el menu).
+   2. Configuracion de red de SQL Server -> Protocolos de <INSTANCIA>.
+   3. Clic derecho en TCP/IP -> Habilitar.
+   4. Doble clic en TCP/IP -> pestaña Direcciones IP -> al final, en IPAll:
+         Puertos TCP dinamicos: (vacio)
+         Puerto TCP          : 1433
+   5. Servicios de SQL Server -> clic derecho en el servicio -> Reiniciar.
+
+ Comprobar que quedo escuchando:
+
+     Get-NetTCPConnection -State Listen -LocalPort 1433
+
+ Debe aparecer al menos una linea. Si el servidor esta en otro equipo, hay
+ que abrir ademas el puerto 1433 en el firewall.
+
+
+================================================================================
+ 4. PASOS
+================================================================================
+
+ PASO 1 - Crear la estructura de carpetas
 
      mkdir "test BD"
      cd "test BD"
      mkdir sql
      mkdir evidencias
+     mkdir app-java
+     mkdir app-java\lib
+     mkdir app-java\src
+     mkdir app-java\src\gestionclientes
 
- PASO 2 - Crear el script SQL
+ PASO 2 - Crear el script SQL y ejecutarlo
 
-     Guardar el archivo "sql/01_BD_Comercializadora.sql" con el contenido
-     del apartado 6.1 y ejecutarlo:
+     Guardar "sql/01_BD_Comercializadora.sql" con el contenido del
+     apartado 7.1 y ejecutarlo:
 
          sqlcmd -S localhost -E -C -i "sql/01_BD_Comercializadora.sql"
 
@@ -90,81 +145,92 @@
          -C             confiar en el certificado del servidor
          -i             archivo de entrada
 
-     Si usan usuario y contrasena de SQL Server en lugar de Windows:
+     Con usuario y contrasena de SQL Server en lugar de Windows:
 
          sqlcmd -S localhost -U sa -P TuClave -C -i "sql/01_BD_Comercializadora.sql"
 
      Debe terminar mostrando los 5 clientes de prueba.
 
- PASO 3 - Crear el proyecto de la aplicacion
+ PASO 3 - Colocar el driver
 
-     dotnet new winforms -o app/GestionClientes
-     cd app/GestionClientes
-     dotnet add package Microsoft.Data.SqlClient
+     Dejar en app-java\lib los dos archivos del apartado 2, punto 4:
 
-     El comando "dotnet new winforms" genera Form1.cs y Form1.Designer.cs:
-     BORRARLOS. Esta version construye la interfaz por codigo, sin diseñador,
-     para que todo quepa en un solo archivo y sea facil de copiar.
+         mssql-jdbc-13.6.2.jre11.jar
+         mssql-jdbc_auth-13.6.2.x64.dll
 
-         del Form1.cs
-         del Form1.Designer.cs
+ PASO 4 - Copiar los archivos del proyecto
 
- PASO 4 - Copiar los archivos de codigo
+     Del apartado 7, dentro de app-java:
 
-     Del apartado 6 copiar, dentro de app/GestionClientes:
-
-         GestionClientes.csproj     (reemplaza el generado)
-         appsettings.json
-         Cliente.cs
-         Conexion.cs
-         ClientesRepositorio.cs
-         FormClientes.cs
-         Program.cs
+         conexion.properties
+         compilar.bat
+         ejecutar.bat
+         pom.xml                          (opcional, solo para Maven o IDE)
+         src\gestionclientes\Cliente.java
+         src\gestionclientes\Conexion.java
+         src\gestionclientes\ClientesRepositorio.java
+         src\gestionclientes\VentanaClientes.java
+         src\gestionclientes\LimiteTexto.java
+         src\gestionclientes\Main.java
 
  PASO 5 - Ajustar la cadena de conexion
 
-     Abrir appsettings.json y dejar en "ConnectionString" la que corresponda
-     al equipo. Casos tipicos:
+     Abrir conexion.properties y dejar en jdbc.url la que corresponda.
+     Casos tipicos:
 
-       Instancia por defecto con autenticacion de Windows:
-         Server=localhost;Database=BD_Comercializadora;Integrated Security=True;TrustServerCertificate=True;
+       Instancia por defecto, autenticacion de Windows:
+         jdbc:sqlserver://localhost;databaseName=BD_Comercializadora;integratedSecurity=true;encrypt=true;trustServerCertificate=true
 
-       Instancia SQL Express:
-         Server=localhost\SQLEXPRESS;Database=BD_Comercializadora;Integrated Security=True;TrustServerCertificate=True;
+       Instancia SQL Express (la barra invertida va DOBLE en un .properties):
+         jdbc:sqlserver://localhost\\SQLEXPRESS;databaseName=BD_Comercializadora;integratedSecurity=true;encrypt=true;trustServerCertificate=true
 
        Con usuario y contrasena de SQL Server:
-         Server=localhost;Database=BD_Comercializadora;User Id=sa;Password=TuClave;TrustServerCertificate=True;
+         jdbc.url=jdbc:sqlserver://localhost:1433;databaseName=BD_Comercializadora;encrypt=true;trustServerCertificate=true
+         jdbc.usuario=sa
+         jdbc.clave=TuClave
 
-       Con puerto explicito:
-         Server=localhost,1433;Database=BD_Comercializadora;User Id=sa;Password=TuClave;TrustServerCertificate=True;
+       Servidor remoto:
+         jdbc:sqlserver://192.168.1.50:1433;databaseName=BD_Comercializadora;encrypt=true;trustServerCertificate=true
 
-     OJO: en el JSON la barra invertida se escribe doble. SQLEXPRESS queda asi:
-         "Server=localhost\\SQLEXPRESS;Database=..."
+     trustServerCertificate=true es necesario porque el driver cifra la
+     conexion por defecto y el certificado de un servidor local no esta
+     firmado por una entidad de confianza.
 
- PASO 6 - Compilar y probar la conexion sin abrir la ventana
+ PASO 6 - Compilar
 
-     dotnet build
-     dotnet run -- --prueba
+     cd app-java
+     compilar.bat
+
+     Debe decir "Compilacion correcta". Se crea la carpeta bin con los
+     .class; esa carpeta no se entrega, se regenera sola.
+
+ PASO 7 - Probar la conexion sin abrir la ventana
+
+     ejecutar.bat --prueba
 
      Salida esperada:
 
-         Cadena de conexion : Server=localhost;Database=BD_Comercializadora;...
+         Cadena de conexion : jdbc:sqlserver://localhost;databaseName=...
          Servidor / BD      : NOMBRE-EQUIPO / BD_Comercializadora
          Clientes antes     : 5
          Insertado IdCliente: 6
          Clientes despues   : 6
          RESULTADO: OK
 
-     Si da FALLO, el mensaje dice el motivo. Ver el apartado 5.
+     Con JDK 22 o superior salen ademas unos avisos "WARNING: A restricted
+     method in java.lang.System has been called". Son del JDK al cargar la
+     DLL de autenticacion de Windows: no son un error y se pueden ignorar.
 
- PASO 7 - Ejecutar la aplicacion
+     Si da FALLO, el mensaje dice el motivo. Ver el apartado 6.
 
-     dotnet run
+ PASO 8 - Ejecutar la aplicacion
+
+     ejecutar.bat
 
      Al abrir, la barra inferior debe decir en verde:
          "OK - 5 cliente(s) recuperado(s) desde la base de datos."
 
- PASO 8 - Hacer la demostracion (punto D)
+ PASO 9 - Hacer la demostracion (punto D)
 
      1. Abrir la app y comprobar que la barra inferior dice OK.
      2. Llenar los campos y pulsar Guardar.
@@ -184,13 +250,13 @@
 
 
 ================================================================================
- 4. ENTREGABLES Y DONDE SALE CADA UNO
+ 5. ENTREGABLES Y DONDE SALE CADA UNO
 ================================================================================
 
  1. Script SQL de creacion              -> sql/01_BD_Comercializadora.sql
- 2. Proyecto de la aplicacion           -> carpeta app/GestionClientes
- 3. Evidencia de la cadena de conexion  -> appsettings.json y la salida de
-                                           "dotnet run -- --prueba"
+ 2. Proyecto de la aplicacion           -> carpeta app-java
+ 3. Evidencia de la cadena de conexion  -> conexion.properties y la salida de
+                                           "ejecutar.bat --prueba"
  4. Captura de la app funcionando       -> pantallazo de la ventana con la
                                            grilla llena y la barra en verde
  5. Evidencia de un registro hecho      -> pantallazo del aviso "guardado
@@ -198,26 +264,34 @@
                                            SELECT ejecutado en el SGBD
 
  Recomendacion: guardar las capturas en la carpeta evidencias/ y entregar
- todo comprimido, excluyendo las carpetas bin/ y obj/ (se regeneran solas).
+ todo comprimido, excluyendo la carpeta bin (se regenera sola). El .jar del
+ driver conviene dejarlo dentro, para que el proyecto compile en cualquier
+ equipo sin descargar nada.
 
 
 ================================================================================
- 5. PROBLEMAS FRECUENTES
+ 6. PROBLEMAS FRECUENTES
 ================================================================================
 
- "La cadena de certificacion fue emitida por una entidad en la que no se confia"
-     Falta TrustServerCertificate=True en la cadena de conexion, o el -C
-     en el comando sqlcmd.
+ "No se pudo realizar la conexion TCP/IP al host localhost, puerto 1433"
+     TCP/IP esta deshabilitado en SQL Server. Es el caso mas comun con Java.
+     Ver el apartado 3 completo.
 
- "A network-related or instance-specific error" / no encuentra el servidor
-     El nombre del servidor esta mal o el servicio no corre. Si es Express,
-     el servidor es localhost\SQLEXPRESS, no localhost. Revisar tambien que
-     el servicio SQL Server Browser este activo cuando se usan instancias
-     con nombre.
+ "El controlador no pudo establecer una conexion segura mediante SSL"
+     Falta trustServerCertificate=true en jdbc.url.
+
+ "No suitable driver found for jdbc:sqlserver://..."
+     El .jar del driver no esta en el classpath. Revisar que este en lib y
+     que se ejecute con ejecutar.bat, que es quien pone -cp "bin;lib\*".
+
+ "WARNING: Failed to load the sqljdbc_auth.dll"
+     Falta la DLL en lib, o se esta ejecutando sin -Djava.library.path="lib",
+     o la DLL es de 32 bits y el JDK de 64. Alternativa rapida: usar usuario
+     y contrasena de SQL Server, que no necesita la DLL.
 
  "Login failed for user 'sa'"
      La autenticacion mixta esta desactivada o la clave es otra. Lo mas
-     rapido en un equipo propio es usar Integrated Security=True.
+     rapido en un equipo propio es la autenticacion de Windows.
 
  "Cannot open database BD_Comercializadora"
      El script no se ejecuto, o se ejecuto contra otra instancia distinta
@@ -230,22 +304,30 @@
      Es el comportamiento correcto: ya existe un cliente con esa
      identificacion o ese correo. La app lo traduce a un aviso legible.
 
- La app abre pero la barra inferior esta en rojo
+ "No se encontro un JDK. Instale uno o defina la variable JAVA_HOME."
+     Lo dice compilar.bat cuando no encuentra javac. Instalar un JDK (no
+     solo un JRE) o definir JAVA_HOME apuntando a la carpeta del JDK.
+
+ "error: invalid source release" al compilar
+     El JDK es anterior a 17. El codigo usa bloques de texto y switch con
+     flechas. Actualizar el JDK o bajar esas construcciones a sintaxis vieja.
+
+ La ventana abre pero la barra inferior esta en rojo
      El problema es la cadena de conexion, no el codigo. El cuadro de error
      muestra la cadena que se intento usar, con la contrasena enmascarada.
 
- "No se encontro appsettings.json"
-     Falta el bloque <None Update="appsettings.json"> en el .csproj, que es
-     el que lo copia junto al ejecutable al compilar.
+ "No se encontro conexion.properties"
+     El archivo debe estar en la carpeta desde la que se ejecuta la app.
+     ejecutar.bat hace "cd /d %~dp0" justo para eso.
 
 
 ================================================================================
- 6. ARCHIVOS DEL PROYECTO (contenido completo)
+ 7. ARCHIVOS DEL PROYECTO (contenido completo)
 ================================================================================
 
 
 --------------------------------------------------------------------------------
- 6.1  sql/01_BD_Comercializadora.sql
+ 7.1  sql/01_BD_Comercializadora.sql
 --------------------------------------------------------------------------------
 
 /* =========================================================
@@ -308,619 +390,881 @@ GO
 
 
 --------------------------------------------------------------------------------
- 6.2  app/GestionClientes/GestionClientes.csproj
+ 7.2  app-java/conexion.properties
 --------------------------------------------------------------------------------
 
-<Project Sdk="Microsoft.NET.Sdk">
+# =====================================================================
+# Cadena de conexion (Requerimiento C)
+# Ajustar al servidor y las credenciales disponibles en el laboratorio.
+# =====================================================================
 
-  <PropertyGroup>
-    <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
-    <UseWindowsForms>true</UseWindowsForms>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>GestionClientes</RootNamespace>
-    <AssemblyName>GestionClientes</AssemblyName>
-  </PropertyGroup>
+# --- Opcion 1: autenticacion de Windows (la que esta activa) ---------
+# Necesita mssql-jdbc_auth-<version>.x64.dll en la carpeta lib,
+# que es lo que hacen compilar.bat y ejecutar.bat.
+jdbc.url=jdbc:sqlserver://localhost;databaseName=BD_Comercializadora;integratedSecurity=true;encrypt=true;trustServerCertificate=true
 
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.1" />
-  </ItemGroup>
+# --- Opcion 2: usuario y contrasena de SQL Server --------------------
+# Comentar la linea de arriba, descomentar estas tres y poner la clave.
+#jdbc.url=jdbc:sqlserver://localhost:1433;databaseName=BD_Comercializadora;encrypt=true;trustServerCertificate=true
+#jdbc.usuario=sa
+#jdbc.clave=TuClave
 
-  <ItemGroup>
-    <None Update="appsettings.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-
-</Project>
+# --- Otras variantes utiles ------------------------------------------
+# Instancia SQL Express:
+#   jdbc:sqlserver://localhost\\SQLEXPRESS;databaseName=BD_Comercializadora;integratedSecurity=true;encrypt=true;trustServerCertificate=true
+# Servidor remoto con puerto explicito:
+#   jdbc:sqlserver://192.168.1.50:1433;databaseName=BD_Comercializadora;encrypt=true;trustServerCertificate=true
 
 
 --------------------------------------------------------------------------------
- 6.3  app/GestionClientes/appsettings.json
+ 7.3  app-java/compilar.bat
 --------------------------------------------------------------------------------
 
-{
-  "// Cadena de conexion (Requerimiento C)": "Ajustar Server/Database/usuario y clave al servidor del laboratorio.",
+@echo off
+REM Compila el proyecto sin necesidad de Maven ni IDE.
+setlocal enabledelayedexpansion
+cd /d "%~dp0"
 
-  "ConnectionString": "Server=localhost;Database=BD_Comercializadora;Integrated Security=True;TrustServerCertificate=True;",
+REM --- Localizar el JDK -------------------------------------------
+set "JDKBIN="
+for %%I in (javac.exe) do if not "%%~$PATH:I"=="" set "JDKBIN=%%~dp$PATH:I"
+if not defined JDKBIN if defined JAVA_HOME if exist "%JAVA_HOME%\bin\javac.exe" set "JDKBIN=%JAVA_HOME%\bin\"
+if not defined JDKBIN for /d %%D in ("C:\Program Files\Java\jdk*") do if exist "%%D\bin\javac.exe" set "JDKBIN=%%D\bin\"
+if not defined JDKBIN for /d %%D in ("C:\Program Files\Eclipse Adoptium\jdk*") do if exist "%%D\bin\javac.exe" set "JDKBIN=%%D\bin\"
+if not defined JDKBIN for /d %%D in ("C:\Program Files\Microsoft\jdk*") do if exist "%%D\bin\javac.exe" set "JDKBIN=%%D\bin\"
+if not defined JDKBIN (
+    echo No se encontro un JDK. Instale uno o defina la variable JAVA_HOME.
+    exit /b 1
+)
 
-  "// Variante con usuario y contrasena de SQL Server": "Usar esta si el laboratorio entrega credenciales sa/clave.",
-  "ConnectionStringSqlAuth": "Server=localhost;Database=BD_Comercializadora;User Id=sa;Password=TuClave;TrustServerCertificate=True;"
+if not exist "bin" mkdir "bin"
+
+set "FUENTES="
+for /r "src" %%F in (*.java) do set FUENTES=!FUENTES! "%%F"
+if not defined FUENTES (
+    echo No se encontraron archivos .java dentro de src.
+    exit /b 1
+)
+
+echo Compilando con "%JDKBIN%javac"
+"%JDKBIN%javac" -encoding UTF-8 -d bin -cp "lib\*"!FUENTES!
+if errorlevel 1 (
+    echo.
+    echo FALLO LA COMPILACION.
+    exit /b 1
+)
+
+echo Compilacion correcta. Ahora ejecute ejecutar.bat
+
+
+--------------------------------------------------------------------------------
+ 7.4  app-java/ejecutar.bat
+--------------------------------------------------------------------------------
+
+@echo off
+REM Ejecuta la aplicacion. Con el parametro --prueba hace la
+REM comprobacion de conexion por consola, sin abrir la ventana.
+setlocal
+cd /d "%~dp0"
+
+REM --- Localizar el JDK -------------------------------------------
+set "JDKBIN="
+for %%I in (javac.exe) do if not "%%~$PATH:I"=="" set "JDKBIN=%%~dp$PATH:I"
+if not defined JDKBIN if defined JAVA_HOME if exist "%JAVA_HOME%\bin\javac.exe" set "JDKBIN=%JAVA_HOME%\bin\"
+if not defined JDKBIN for /d %%D in ("C:\Program Files\Java\jdk*") do if exist "%%D\bin\javac.exe" set "JDKBIN=%%D\bin\"
+if not defined JDKBIN for /d %%D in ("C:\Program Files\Eclipse Adoptium\jdk*") do if exist "%%D\bin\javac.exe" set "JDKBIN=%%D\bin\"
+if not defined JDKBIN for /d %%D in ("C:\Program Files\Microsoft\jdk*") do if exist "%%D\bin\javac.exe" set "JDKBIN=%%D\bin\"
+if not defined JDKBIN (
+    echo No se encontro un JDK. Instale uno o defina la variable JAVA_HOME.
+    exit /b 1
+)
+
+if not exist "bin\gestionclientes\Main.class" (
+    echo No esta compilado. Ejecute primero compilar.bat
+    exit /b 1
+)
+
+"%JDKBIN%java" -cp "bin;lib\*" -Djava.library.path="lib" gestionclientes.Main %*
+
+
+--------------------------------------------------------------------------------
+ 7.5  app-java/pom.xml
+--------------------------------------------------------------------------------
+
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Alternativa para quien tenga Maven o abra el proyecto en IntelliJ / Eclipse.
+  Sin Maven se puede usar compilar.bat y ejecutar.bat, que ya traen el driver
+  en la carpeta lib.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>edu.unidadv</groupId>
+  <artifactId>gestion-clientes</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+  <name>Gestion de Clientes</name>
+
+  <properties>
+    <maven.compiler.release>17</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <exec.mainClass>gestionclientes.Main</exec.mainClass>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.microsoft.sqlserver</groupId>
+      <artifactId>mssql-jdbc</artifactId>
+      <version>13.6.2.jre11</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <!-- El codigo esta en src/ en vez de src/main/java para que la version
+         sin Maven sea mas corta de explicar. -->
+    <sourceDirectory>src</sourceDirectory>
+
+    <resources>
+      <resource>
+        <directory>.</directory>
+        <includes>
+          <include>conexion.properties</include>
+        </includes>
+      </resource>
+    </resources>
+
+    <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.5.0</version>
+        <configuration>
+          <mainClass>gestionclientes.Main</mainClass>
+          <!-- Necesario para la autenticacion de Windows -->
+          <systemProperties>
+            <systemProperty>
+              <key>java.library.path</key>
+              <value>lib</value>
+            </systemProperty>
+          </systemProperties>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>
+
+
+--------------------------------------------------------------------------------
+ 7.6  app-java/src/gestionclientes/Cliente.java
+--------------------------------------------------------------------------------
+
+package gestionclientes;
+
+/** Representa una fila de la tabla Clientes. */
+public class Cliente {
+
+    private int id;
+    private String nombres = "";
+    private String apellidos = "";
+    private String identificacion = "";
+    private String telefono = "";
+    private String correo = "";
+    private String direccion = "";
+    private boolean estado = true;
+
+    public int getId() { return id; }
+    public void setId(int id) { this.id = id; }
+
+    public String getNombres() { return nombres; }
+    public void setNombres(String nombres) { this.nombres = nombres; }
+
+    public String getApellidos() { return apellidos; }
+    public void setApellidos(String apellidos) { this.apellidos = apellidos; }
+
+    public String getIdentificacion() { return identificacion; }
+    public void setIdentificacion(String identificacion) { this.identificacion = identificacion; }
+
+    public String getTelefono() { return telefono; }
+    public void setTelefono(String telefono) { this.telefono = telefono; }
+
+    public String getCorreo() { return correo; }
+    public void setCorreo(String correo) { this.correo = correo; }
+
+    public String getDireccion() { return direccion; }
+    public void setDireccion(String direccion) { this.direccion = direccion; }
+
+    public boolean isEstado() { return estado; }
+    public void setEstado(boolean estado) { this.estado = estado; }
 }
 
 
 --------------------------------------------------------------------------------
- 6.4  app/GestionClientes/Cliente.cs
+ 7.7  app-java/src/gestionclientes/Conexion.java
 --------------------------------------------------------------------------------
 
-namespace GestionClientes;
+package gestionclientes;
 
-/// <summary>Representa una fila de la tabla Clientes.</summary>
-public class Cliente
-{
-    public int Id { get; set; }
-    public string Nombres { get; set; } = "";
-    public string Apellidos { get; set; } = "";
-    public string Identificacion { get; set; } = "";
-    public string Telefono { get; set; } = "";
-    public string Correo { get; set; } = "";
-    public string Direccion { get; set; } = "";
-    public bool Estado { get; set; } = true;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.util.Properties;
+
+/**
+ * Requerimiento C: lectura de la cadena de conexion desde conexion.properties
+ * y apertura de conexiones contra el SGBD.
+ */
+public final class Conexion {
+
+    private static final String ARCHIVO = "conexion.properties";
+
+    private static String url;
+    private static String usuario;
+    private static String clave;
+
+    private Conexion() {
+    }
+
+    private static synchronized void cargar() {
+        if (url != null) {
+            return;
+        }
+
+        Properties p = new Properties();
+
+        // Se busca primero junto al programa y, si no esta, dentro del propio jar.
+        Path local = Path.of(ARCHIVO);
+        try {
+            if (Files.exists(local)) {
+                try (Reader r = Files.newBufferedReader(local, StandardCharsets.UTF_8)) {
+                    p.load(r);
+                }
+            } else {
+                try (InputStream in = Conexion.class.getClassLoader().getResourceAsStream(ARCHIVO)) {
+                    if (in == null) {
+                        throw new IllegalStateException(
+                                "No se encontro " + ARCHIVO + " con la cadena de conexion.");
+                    }
+                    p.load(new InputStreamReader(in, StandardCharsets.UTF_8));
+                }
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("No se pudo leer " + ARCHIVO, e);
+        }
+
+        url = p.getProperty("jdbc.url", "").trim();
+        if (url.isEmpty()) {
+            throw new IllegalStateException(ARCHIVO + " no contiene la clave 'jdbc.url'.");
+        }
+
+        usuario = p.getProperty("jdbc.usuario", "").trim();
+        clave = p.getProperty("jdbc.clave", "").trim();
+    }
+
+    /** Abre una conexion nueva contra el servidor de base de datos. */
+    public static Connection abrir() throws SQLException {
+        cargar();
+        if (usuario.isEmpty()) {
+            // Autenticacion de Windows: las credenciales van dentro de la URL.
+            return DriverManager.getConnection(url);
+        }
+        return DriverManager.getConnection(url, usuario, clave);
+    }
+
+    /** Version segura para mostrar en pantalla (oculta la contrasena). */
+    public static String cadenaParaMostrar() {
+        cargar();
+
+        StringBuilder sb = new StringBuilder();
+        for (String parte : url.split(";")) {
+            if (parte.isBlank()) {
+                continue;
+            }
+            String nombre = parte.split("=")[0].trim().toLowerCase();
+            sb.append(nombre.equals("password") ? "password=********" : parte.trim()).append(';');
+        }
+
+        if (!usuario.isEmpty()) {
+            sb.append(" [usuario=").append(usuario).append("; clave=********]");
+        }
+        return sb.toString();
+    }
 }
 
 
 --------------------------------------------------------------------------------
- 6.5  app/GestionClientes/Conexion.cs
+ 7.8  app-java/src/gestionclientes/ClientesRepositorio.java
 --------------------------------------------------------------------------------
 
-using System.Text.Json;
+package gestionclientes;
 
-namespace GestionClientes;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.sql.Types;
+import java.util.ArrayList;
+import java.util.List;
 
-/// <summary>
-/// Requerimiento C: lectura de la cadena de conexion desde appsettings.json.
-/// </summary>
-public static class Conexion
-{
-    private static string? _cadena;
+/**
+ * Acceso a datos: unico punto donde la aplicacion habla con el SGBD.
+ */
+public class ClientesRepositorio {
 
-    public static string Cadena
-    {
-        get
-        {
-            if (_cadena is not null) return _cadena;
+    /** Codigos de SQL Server para violacion de restriccion UNIQUE. */
+    public static boolean esDuplicado(SQLException e) {
+        return e.getErrorCode() == 2601 || e.getErrorCode() == 2627;
+    }
 
-            var ruta = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
-            if (!File.Exists(ruta))
-                throw new FileNotFoundException("No se encontro appsettings.json con la cadena de conexion.", ruta);
+    /** Prueba de conexion (Requerimiento C, actividad 6). */
+    public String probarConexion() throws SQLException {
+        String sql = "SELECT @@SERVERNAME + ' / ' + DB_NAME();";
+        try (Connection cn = Conexion.abrir();
+             PreparedStatement cmd = cn.prepareStatement(sql);
+             ResultSet r = cmd.executeQuery()) {
 
-            using var doc = JsonDocument.Parse(File.ReadAllText(ruta));
-            if (!doc.RootElement.TryGetProperty("ConnectionString", out var valor))
-                throw new InvalidOperationException("appsettings.json no contiene la clave 'ConnectionString'.");
-
-            _cadena = valor.GetString()
-                      ?? throw new InvalidOperationException("La cadena de conexion esta vacia.");
-            return _cadena;
+            return r.next() ? r.getString(1) : "(desconocido)";
         }
     }
 
-    /// <summary>Version segura para mostrar en pantalla (oculta la contrasena).</summary>
-    public static string CadenaParaMostrar()
-    {
-        var partes = Cadena.Split(';', StringSplitOptions.RemoveEmptyEntries);
-        var visibles = partes.Select(p =>
-        {
-            var clave = p.Split('=')[0].Trim().ToLowerInvariant();
-            return clave is "password" or "pwd" ? clave + "=********" : p.Trim();
-        });
-        return string.Join(";", visibles) + ";";
-    }
-}
+    /** Consulta todos los clientes registrados. */
+    public List<Cliente> consultar() throws SQLException {
+        String sql = """
+                SELECT IdCliente, Nombres, Apellidos, Identificacion,
+                       Telefono, Correo, Direccion, Estado
+                FROM dbo.Clientes
+                ORDER BY IdCliente""";
 
+        List<Cliente> lista = new ArrayList<>();
 
---------------------------------------------------------------------------------
- 6.6  app/GestionClientes/ClientesRepositorio.cs
---------------------------------------------------------------------------------
+        try (Connection cn = Conexion.abrir();
+             PreparedStatement cmd = cn.prepareStatement(sql);
+             ResultSet r = cmd.executeQuery()) {
 
-using Microsoft.Data.SqlClient;
-
-namespace GestionClientes;
-
-/// <summary>
-/// Acceso a datos: unico punto donde la aplicacion habla con el SGBD.
-/// </summary>
-public class ClientesRepositorio
-{
-    /// <summary>Prueba de conexion (Requerimiento C, actividad 6).</summary>
-    public string ProbarConexion()
-    {
-        using var cn = new SqlConnection(Conexion.Cadena);
-        cn.Open();
-        using var cmd = new SqlCommand("SELECT @@SERVERNAME + ' / ' + DB_NAME();", cn);
-        return cmd.ExecuteScalar()?.ToString() ?? "(desconocido)";
-    }
-
-    /// <summary>Consulta todos los clientes registrados.</summary>
-    public List<Cliente> Consultar()
-    {
-        const string sql = @"
-            SELECT IdCliente, Nombres, Apellidos, Identificacion,
-                   Telefono, Correo, Direccion, Estado
-            FROM dbo.Clientes
-            ORDER BY IdCliente;";
-
-        var lista = new List<Cliente>();
-
-        using var cn = new SqlConnection(Conexion.Cadena);
-        cn.Open();
-        using var cmd = new SqlCommand(sql, cn);
-        using var lector = cmd.ExecuteReader();
-
-        while (lector.Read())
-        {
-            lista.Add(new Cliente
-            {
-                Id             = lector.GetInt32(0),
-                Nombres        = lector.GetString(1),
-                Apellidos      = lector.GetString(2),
-                Identificacion = lector.GetString(3),
-                Telefono       = lector.GetString(4),
-                Correo         = lector.GetString(5),
-                Direccion      = lector.GetString(6),
-                Estado         = lector.GetBoolean(7)
-            });
+            while (r.next()) {
+                Cliente c = new Cliente();
+                c.setId(r.getInt(1));
+                c.setNombres(r.getString(2));
+                c.setApellidos(r.getString(3));
+                c.setIdentificacion(r.getString(4));
+                c.setTelefono(r.getString(5));
+                c.setCorreo(r.getString(6));
+                c.setDireccion(r.getString(7));
+                c.setEstado(r.getBoolean(8));
+                lista.add(c);
+            }
         }
 
         return lista;
     }
 
-    /// <summary>Inserta un cliente y devuelve el IdCliente generado.</summary>
-    public int Guardar(Cliente c)
-    {
-        const string sql = @"
-            INSERT INTO dbo.Clientes
-                (Nombres, Apellidos, Identificacion, Telefono, Correo, Direccion, Estado)
-            VALUES
-                (@Nombres, @Apellidos, @Identificacion, @Telefono, @Correo, @Direccion, @Estado);
-            SELECT CAST(SCOPE_IDENTITY() AS INT);";
+    /** Inserta un cliente y devuelve el IdCliente generado. */
+    public int guardar(Cliente c) throws SQLException {
+        String sql = """
+                INSERT INTO dbo.Clientes
+                    (Nombres, Apellidos, Identificacion, Telefono, Correo, Direccion, Estado)
+                VALUES
+                    (?, ?, ?, ?, ?, ?, ?)""";
 
-        using var cn = new SqlConnection(Conexion.Cadena);
-        cn.Open();
-        using var cmd = new SqlCommand(sql, cn);
+        try (Connection cn = Conexion.abrir();
+             PreparedStatement cmd = cn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
 
-        // Parametros: evitan inyeccion SQL y respetan los tipos de la tabla.
-        cmd.Parameters.Add("@Nombres",        System.Data.SqlDbType.VarChar, 80).Value  = c.Nombres;
-        cmd.Parameters.Add("@Apellidos",      System.Data.SqlDbType.VarChar, 80).Value  = c.Apellidos;
-        cmd.Parameters.Add("@Identificacion", System.Data.SqlDbType.VarChar, 20).Value  = c.Identificacion;
-        cmd.Parameters.Add("@Telefono",       System.Data.SqlDbType.VarChar, 15).Value  = c.Telefono;
-        cmd.Parameters.Add("@Correo",         System.Data.SqlDbType.VarChar, 100).Value = c.Correo;
-        cmd.Parameters.Add("@Direccion",      System.Data.SqlDbType.VarChar, 150).Value = c.Direccion;
-        cmd.Parameters.Add("@Estado",         System.Data.SqlDbType.Bit).Value          = c.Estado;
+            // Parametros: evitan inyeccion SQL y respetan los tipos de la tabla.
+            cmd.setString(1, c.getNombres());
+            cmd.setString(2, c.getApellidos());
+            cmd.setString(3, c.getIdentificacion());
+            cmd.setString(4, c.getTelefono());
+            cmd.setString(5, c.getCorreo());
+            cmd.setString(6, c.getDireccion());
+            cmd.setObject(7, c.isEstado(), Types.BIT);
 
-        return Convert.ToInt32(cmd.ExecuteScalar());
+            cmd.executeUpdate();
+
+            try (ResultSet claves = cmd.getGeneratedKeys()) {
+                return claves.next() ? claves.getInt(1) : 0;
+            }
+        }
     }
 }
 
 
 --------------------------------------------------------------------------------
- 6.7  app/GestionClientes/FormClientes.cs
+ 7.9  app-java/src/gestionclientes/LimiteTexto.java
 --------------------------------------------------------------------------------
 
-using System.ComponentModel;
+package gestionclientes;
 
-namespace GestionClientes;
+import javax.swing.text.AttributeSet;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.PlainDocument;
 
-/// <summary>
-/// Presentation Tier (Requerimiento B): formulario "Gestion de Clientes".
-/// </summary>
-public class FormClientes : Form
-{
-    private readonly ClientesRepositorio _repo = new();
+/**
+ * Impide escribir mas caracteres de los que admite la columna de la tabla.
+ * Equivale a la propiedad MaxLength de un cuadro de texto.
+ */
+public class LimiteTexto extends PlainDocument {
+
+    private final int maximo;
+
+    public LimiteTexto(int maximo) {
+        this.maximo = maximo;
+    }
+
+    @Override
+    public void insertString(int desplazamiento, String texto, AttributeSet atributos)
+            throws BadLocationException {
+
+        if (texto == null) {
+            return;
+        }
+        if (getLength() + texto.length() <= maximo) {
+            super.insertString(desplazamiento, texto, atributos);
+        }
+    }
+}
+
+
+--------------------------------------------------------------------------------
+ 7.10  app-java/src/gestionclientes/VentanaClientes.java
+--------------------------------------------------------------------------------
+
+package gestionclientes;
+
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
+import javax.swing.JButton;
+import javax.swing.JCheckBox;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTable;
+import javax.swing.JTextField;
+import javax.swing.ListSelectionModel;
+import javax.swing.SwingConstants;
+import javax.swing.table.AbstractTableModel;
+import javax.swing.table.TableColumn;
+
+/**
+ * Presentation Tier (Requerimiento B): ventana "Gestion de Clientes".
+ */
+public class VentanaClientes extends JFrame {
+
+    private final ClientesRepositorio repo = new ClientesRepositorio();
 
     // Campos de entrada
-    private readonly TextBox _txtNombres        = new();
-    private readonly TextBox _txtApellidos      = new();
-    private readonly TextBox _txtIdentificacion = new();
-    private readonly TextBox _txtTelefono       = new();
-    private readonly TextBox _txtCorreo         = new();
-    private readonly TextBox _txtDireccion      = new();
-    private readonly CheckBox _chkEstado        = new() { Text = "Activo", Checked = true };
+    private final JTextField txtNombres = new JTextField();
+    private final JTextField txtApellidos = new JTextField();
+    private final JTextField txtIdentificacion = new JTextField();
+    private final JTextField txtTelefono = new JTextField();
+    private final JTextField txtCorreo = new JTextField();
+    private final JTextField txtDireccion = new JTextField();
+    private final JCheckBox chkEstado = new JCheckBox("Activo", true);
 
-    private readonly Button _btnGuardar   = new() { Text = "Guardar" };
-    private readonly Button _btnConsultar = new() { Text = "Consultar" };
-    private readonly Button _btnLimpiar   = new() { Text = "Limpiar" };
+    private final JButton btnGuardar = new JButton("Guardar");
+    private final JButton btnConsultar = new JButton("Consultar");
+    private final JButton btnLimpiar = new JButton("Limpiar");
 
-    private readonly DataGridView _grid = new();
-    private readonly Label _lblEstado   = new();
+    private final ModeloClientes modelo = new ModeloClientes();
+    private final JTable tabla = new JTable(modelo);
+    private final JLabel lblEstado = new JLabel();
 
-    public FormClientes()
-    {
-        Text = "Gestion de Clientes";
-        Size = new Size(1020, 640);
-        MinimumSize = new Size(820, 540);
-        StartPosition = FormStartPosition.CenterScreen;
-        Font = new Font("Segoe UI", 9F);
+    public VentanaClientes() {
+        setTitle("Gestion de Clientes");
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setSize(1020, 640);
+        setMinimumSize(new Dimension(820, 540));
+        setLocationRelativeTo(null);
 
-        Controls.Add(ConstruirLayout());
+        JPanel raiz = new JPanel(new BorderLayout(0, 8));
+        raiz.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
 
-        _btnGuardar.Click   += (_, _) => Guardar();
-        _btnConsultar.Click += (_, _) => Consultar();
-        _btnLimpiar.Click   += (_, _) => LimpiarFormulario();
+        JPanel arriba = new JPanel();
+        arriba.setLayout(new BoxLayout(arriba, BoxLayout.Y_AXIS));
+        arriba.add(construirPanelDatos());
+        arriba.add(Box.createVerticalStrut(8));
+        arriba.add(construirPanelBotones());
 
-        Load += (_, _) => { ProbarConexionInicial(); Consultar(); };
+        raiz.add(arriba, BorderLayout.NORTH);
+        raiz.add(construirTabla(), BorderLayout.CENTER);
+        raiz.add(construirBarraEstado(), BorderLayout.SOUTH);
+        setContentPane(raiz);
+
+        btnGuardar.addActionListener(e -> guardar());
+        btnConsultar.addActionListener(e -> consultar());
+        btnLimpiar.addActionListener(e -> limpiarFormulario());
+
+        getRootPane().setDefaultButton(btnGuardar);
+
+        probarConexionInicial();
+        consultar();
     }
 
     // ---------- Interfaz ----------
 
-    private Control ConstruirLayout()
-    {
-        var raiz = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            Padding = new Padding(12),
-            ColumnCount = 1,
-            RowCount = 4
-        };
-        raiz.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // datos
-        raiz.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // botones
-        raiz.RowStyles.Add(new RowStyle(SizeType.Percent, 100));  // grilla
-        raiz.RowStyles.Add(new RowStyle(SizeType.AutoSize));      // estado
-
-        raiz.Controls.Add(ConstruirPanelDatos(), 0, 0);
-        raiz.Controls.Add(ConstruirPanelBotones(), 0, 1);
-        raiz.Controls.Add(ConstruirGrilla(), 0, 2);
-        raiz.Controls.Add(ConstruirBarraEstado(), 0, 3);
-        return raiz;
-    }
-
-    private Control ConstruirPanelDatos()
-    {
-        var grupo = new GroupBox
-        {
-            Text = "Datos del cliente",
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Padding = new Padding(10)
-        };
-
-        var tabla = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            ColumnCount = 4,
-            RowCount = 4
-        };
-        tabla.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 135));
-        tabla.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        tabla.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
-        tabla.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-
-        void Fila(int fila, string etiqueta1, Control campo1, string? etiqueta2, Control? campo2)
-        {
-            tabla.Controls.Add(new Label
-            {
-                Text = etiqueta1,
-                AutoSize = true,
-                Anchor = AnchorStyles.Left,
-                Margin = new Padding(3, 8, 3, 3)
-            }, 0, fila);
-
-            campo1.Dock = DockStyle.Fill;
-            campo1.Margin = new Padding(3, 4, 12, 4);
-            tabla.Controls.Add(campo1, 1, fila);
-
-            if (etiqueta2 is null || campo2 is null) return;
-
-            tabla.Controls.Add(new Label
-            {
-                Text = etiqueta2,
-                AutoSize = true,
-                Anchor = AnchorStyles.Left,
-                Margin = new Padding(3, 8, 3, 3)
-            }, 2, fila);
-
-            campo2.Dock = DockStyle.Fill;
-            campo2.Margin = new Padding(3, 4, 3, 4);
-            tabla.Controls.Add(campo2, 3, fila);
-        }
+    private JPanel construirPanelDatos() {
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setBorder(BorderFactory.createTitledBorder("Datos del cliente"));
 
         // Longitudes alineadas con las de la tabla Clientes
-        _txtNombres.MaxLength        = 80;
-        _txtApellidos.MaxLength      = 80;
-        _txtIdentificacion.MaxLength = 20;
-        _txtTelefono.MaxLength       = 15;
-        _txtCorreo.MaxLength         = 100;
-        _txtDireccion.MaxLength      = 150;
+        limitar(txtNombres, 80);
+        limitar(txtApellidos, 80);
+        limitar(txtIdentificacion, 20);
+        limitar(txtTelefono, 15);
+        limitar(txtCorreo, 100);
+        limitar(txtDireccion, 150);
 
-        Fila(0, "Nombres *",        _txtNombres,        "Apellidos *", _txtApellidos);
-        Fila(1, "Identificacion *", _txtIdentificacion, "Telefono *",  _txtTelefono);
-        Fila(2, "Correo *",         _txtCorreo,         "Direccion *", _txtDireccion);
-        Fila(3, "Estado",           _chkEstado,         null,          null);
-
-        grupo.Controls.Add(tabla);
-        return grupo;
-    }
-
-    private Control ConstruirPanelBotones()
-    {
-        var panel = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            AutoSize = true,
-            FlowDirection = FlowDirection.LeftToRight,
-            Padding = new Padding(0, 8, 0, 8)
-        };
-
-        foreach (var b in new[] { _btnGuardar, _btnConsultar, _btnLimpiar })
-        {
-            b.AutoSize = false;
-            b.Size = new Size(110, 32);
-            b.Margin = new Padding(0, 0, 8, 0);
-            panel.Controls.Add(b);
-        }
-
-        _btnGuardar.BackColor = Color.FromArgb(0, 120, 212);
-        _btnGuardar.ForeColor = Color.White;
-        _btnGuardar.FlatStyle = FlatStyle.Flat;
+        fila(panel, 0, "Nombres *", txtNombres, "Apellidos *", txtApellidos);
+        fila(panel, 1, "Identificacion *", txtIdentificacion, "Telefono *", txtTelefono);
+        fila(panel, 2, "Correo *", txtCorreo, "Direccion *", txtDireccion);
+        fila(panel, 3, "Estado", chkEstado, null, null);
 
         return panel;
     }
 
-    private Control ConstruirGrilla()
-    {
-        _grid.Dock = DockStyle.Fill;
-        _grid.ReadOnly = true;
-        _grid.AllowUserToAddRows = false;
-        _grid.AllowUserToDeleteRows = false;
-        _grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-        _grid.MultiSelect = false;
-        _grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
-        _grid.RowHeadersVisible = false;
-        _grid.BackgroundColor = Color.White;
-        _grid.BorderStyle = BorderStyle.FixedSingle;
-        _grid.EnableHeadersVisualStyles = false;
-        _grid.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-        _grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(243, 243, 243);
-        _grid.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(250, 250, 250);
-
-        var grupo = new GroupBox
-        {
-            Text = "Listado de clientes",
-            Dock = DockStyle.Fill,
-            Padding = new Padding(10)
-        };
-        grupo.Controls.Add(_grid);
-        return grupo;
+    private static void limitar(JTextField campo, int maximo) {
+        campo.setDocument(new LimiteTexto(maximo));
     }
 
-    private Control ConstruirBarraEstado()
-    {
-        _lblEstado.Dock = DockStyle.Top;
-        _lblEstado.AutoSize = false;
-        _lblEstado.Height = 24;
-        _lblEstado.TextAlign = ContentAlignment.MiddleLeft;
-        _lblEstado.ForeColor = Color.DimGray;
-        return _lblEstado;
+    private void fila(JPanel panel, int fila,
+                      String etiqueta1, java.awt.Component campo1,
+                      String etiqueta2, java.awt.Component campo2) {
+
+        GridBagConstraints g = new GridBagConstraints();
+        g.insets = new Insets(4, 6, 4, 6);
+        g.gridy = fila;
+
+        g.gridx = 0;
+        g.weightx = 0;
+        g.fill = GridBagConstraints.NONE;
+        g.anchor = GridBagConstraints.WEST;
+        panel.add(new JLabel(etiqueta1), g);
+
+        g.gridx = 1;
+        g.weightx = 0.5;
+        g.fill = GridBagConstraints.HORIZONTAL;
+        campo1.setPreferredSize(new Dimension(300, 26));
+        panel.add(campo1, g);
+
+        if (etiqueta2 == null || campo2 == null) {
+            return;
+        }
+
+        g.gridx = 2;
+        g.weightx = 0;
+        g.fill = GridBagConstraints.NONE;
+        panel.add(new JLabel(etiqueta2), g);
+
+        g.gridx = 3;
+        g.weightx = 0.5;
+        g.fill = GridBagConstraints.HORIZONTAL;
+        campo2.setPreferredSize(new Dimension(300, 26));
+        panel.add(campo2, g);
+    }
+
+    private JPanel construirPanelBotones() {
+        JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+
+        for (JButton b : new JButton[] { btnGuardar, btnConsultar, btnLimpiar }) {
+            b.setPreferredSize(new Dimension(120, 32));
+            panel.add(b);
+        }
+
+        btnGuardar.setBackground(new Color(0, 120, 212));
+        btnGuardar.setForeground(Color.WHITE);
+        btnGuardar.setOpaque(true);
+        btnGuardar.setBorderPainted(false);
+
+        return panel;
+    }
+
+    private JScrollPane construirTabla() {
+        tabla.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
+        tabla.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        tabla.setRowHeight(24);
+        tabla.setGridColor(new Color(220, 220, 220));
+        tabla.getTableHeader().setReorderingAllowed(false);
+        tabla.getTableHeader().setFont(tabla.getFont().deriveFont(Font.BOLD));
+
+        JScrollPane scroll = new JScrollPane(tabla);
+        scroll.setBorder(BorderFactory.createTitledBorder("Listado de clientes"));
+        return scroll;
+    }
+
+    private JLabel construirBarraEstado() {
+        lblEstado.setHorizontalAlignment(SwingConstants.LEFT);
+        lblEstado.setBorder(BorderFactory.createEmptyBorder(4, 2, 0, 2));
+        return lblEstado;
+    }
+
+    private void ajustarAnchos() {
+        if (tabla.getColumnCount() == 0) {
+            return;
+        }
+        int[] pesos = { 40, 130, 130, 120, 110, 180, 180, 70 };
+        for (int i = 0; i < pesos.length && i < tabla.getColumnCount(); i++) {
+            TableColumn col = tabla.getColumnModel().getColumn(i);
+            col.setPreferredWidth(pesos[i]);
+        }
     }
 
     // ---------- Acciones ----------
 
-    private void ProbarConexionInicial()
-    {
-        try
-        {
-            var servidor = _repo.ProbarConexion();
-            Mensaje($"Conexion establecida con {servidor}", correcto: true);
-        }
-        catch (Exception ex)
-        {
-            Mensaje("Sin conexion con el servidor de base de datos.", correcto: false);
-            MessageBox.Show(
-                $"No se pudo conectar al SGBD.\n\n{ex.Message}\n\nCadena usada:\n{Conexion.CadenaParaMostrar()}",
-                "Error de conexion", MessageBoxButtons.OK, MessageBoxIcon.Error);
+    private void probarConexionInicial() {
+        try {
+            String servidor = repo.probarConexion();
+            mensaje("Conexion establecida con " + servidor, true);
+        } catch (Exception ex) {
+            mensaje("Sin conexion con el servidor de base de datos.", false);
+            JOptionPane.showMessageDialog(this,
+                    "No se pudo conectar al SGBD.\n\n" + ex.getMessage()
+                            + "\n\nCadena usada:\n" + Conexion.cadenaParaMostrar(),
+                    "Error de conexion", JOptionPane.ERROR_MESSAGE);
         }
     }
 
-    private void Consultar()
-    {
-        try
-        {
-            var clientes = _repo.Consultar();
-            _grid.DataSource = new BindingList<Cliente>(clientes);
-            FormatearColumnas();
-            Mensaje($"{clientes.Count} cliente(s) recuperado(s) desde la base de datos.", correcto: true);
-        }
-        catch (Exception ex)
-        {
-            Mensaje("Error al consultar los clientes.", correcto: false);
-            MessageBox.Show($"Error al consultar:\n\n{ex.Message}", "Error",
-                MessageBoxButtons.OK, MessageBoxIcon.Error);
+    private void consultar() {
+        try {
+            List<Cliente> clientes = repo.consultar();
+            modelo.reemplazar(clientes);
+            ajustarAnchos();
+            mensaje(clientes.size() + " cliente(s) recuperado(s) desde la base de datos.", true);
+        } catch (Exception ex) {
+            mensaje("Error al consultar los clientes.", false);
+            JOptionPane.showMessageDialog(this,
+                    "Error al consultar:\n\n" + ex.getMessage(),
+                    "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
-    private void Guardar()
-    {
-        if (!Validar(out var faltante))
-        {
-            Mensaje($"El campo '{faltante}' es obligatorio.", correcto: false);
-            MessageBox.Show($"El campo '{faltante}' es obligatorio.", "Validacion",
-                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+    private void guardar() {
+        String faltante = validar();
+        if (faltante != null) {
+            mensaje("El campo '" + faltante + "' es obligatorio.", false);
+            JOptionPane.showMessageDialog(this,
+                    "El campo '" + faltante + "' es obligatorio.",
+                    "Validacion", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
-        var cliente = new Cliente
-        {
-            Nombres        = _txtNombres.Text.Trim(),
-            Apellidos      = _txtApellidos.Text.Trim(),
-            Identificacion = _txtIdentificacion.Text.Trim(),
-            Telefono       = _txtTelefono.Text.Trim(),
-            Correo         = _txtCorreo.Text.Trim(),
-            Direccion      = _txtDireccion.Text.Trim(),
-            Estado         = _chkEstado.Checked
-        };
+        Cliente cliente = new Cliente();
+        cliente.setNombres(txtNombres.getText().trim());
+        cliente.setApellidos(txtApellidos.getText().trim());
+        cliente.setIdentificacion(txtIdentificacion.getText().trim());
+        cliente.setTelefono(txtTelefono.getText().trim());
+        cliente.setCorreo(txtCorreo.getText().trim());
+        cliente.setDireccion(txtDireccion.getText().trim());
+        cliente.setEstado(chkEstado.isSelected());
 
-        try
-        {
-            var id = _repo.Guardar(cliente);
-            Mensaje($"Cliente guardado correctamente con IdCliente = {id}.", correcto: true);
-            MessageBox.Show($"Registro guardado correctamente.\nIdCliente asignado: {id}",
-                "Exito", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            LimpiarFormulario();
-            Consultar();
-        }
-        catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number is 2601 or 2627)
-        {
-            // Violacion de UNIQUE en Identificacion o Correo
-            Mensaje("Ya existe un cliente con esa identificacion o correo.", correcto: false);
-            MessageBox.Show(
-                "Ya existe un cliente registrado con esa identificacion o ese correo.\n" +
-                "Ambos campos deben ser unicos.",
-                "Registro duplicado", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-        catch (Exception ex)
-        {
-            Mensaje("Error al guardar el registro.", correcto: false);
-            MessageBox.Show($"No se pudo guardar el registro.\n\n{ex.Message}", "Error",
-                MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
-    }
-
-    private bool Validar(out string faltante)
-    {
-        var obligatorios = new (string Etiqueta, TextBox Campo)[]
-        {
-            ("Nombres",        _txtNombres),
-            ("Apellidos",      _txtApellidos),
-            ("Identificacion", _txtIdentificacion),
-            ("Telefono",       _txtTelefono),
-            ("Correo",         _txtCorreo),
-            ("Direccion",      _txtDireccion)
-        };
-
-        foreach (var (etiqueta, campo) in obligatorios)
-        {
-            if (string.IsNullOrWhiteSpace(campo.Text))
-            {
-                faltante = etiqueta;
-                campo.Focus();
-                return false;
+        try {
+            int id = repo.guardar(cliente);
+            mensaje("Cliente guardado correctamente con IdCliente = " + id + ".", true);
+            JOptionPane.showMessageDialog(this,
+                    "Registro guardado correctamente.\nIdCliente asignado: " + id,
+                    "Exito", JOptionPane.INFORMATION_MESSAGE);
+            limpiarFormulario();
+            consultar();
+        } catch (SQLException ex) {
+            if (ClientesRepositorio.esDuplicado(ex)) {
+                // Violacion de UNIQUE en Identificacion o Correo
+                mensaje("Ya existe un cliente con esa identificacion o correo.", false);
+                JOptionPane.showMessageDialog(this,
+                        "Ya existe un cliente registrado con esa identificacion o ese correo.\n"
+                                + "Ambos campos deben ser unicos.",
+                        "Registro duplicado", JOptionPane.WARNING_MESSAGE);
+            } else {
+                mensaje("Error al guardar el registro.", false);
+                JOptionPane.showMessageDialog(this,
+                        "No se pudo guardar el registro.\n\n" + ex.getMessage(),
+                        "Error", JOptionPane.ERROR_MESSAGE);
             }
         }
-
-        faltante = "";
-        return true;
     }
 
-    private void LimpiarFormulario()
-    {
-        foreach (var t in new[] { _txtNombres, _txtApellidos, _txtIdentificacion,
-                                  _txtTelefono, _txtCorreo, _txtDireccion })
-            t.Clear();
-
-        _chkEstado.Checked = true;
-        _txtNombres.Focus();
-    }
-
-    private void FormatearColumnas()
-    {
-        if (_grid.Columns.Count == 0) return;
-
-        var titulos = new Dictionary<string, string>
-        {
-            ["Id"]             = "ID",
-            ["Nombres"]        = "Nombres",
-            ["Apellidos"]      = "Apellidos",
-            ["Identificacion"] = "Identificacion",
-            ["Telefono"]       = "Telefono",
-            ["Correo"]         = "Correo",
-            ["Direccion"]      = "Direccion",
-            ["Estado"]         = "Estado"
+    /** Devuelve el nombre del primer campo obligatorio vacio, o null si todo esta completo. */
+    private String validar() {
+        Object[][] obligatorios = {
+            { "Nombres", txtNombres },
+            { "Apellidos", txtApellidos },
+            { "Identificacion", txtIdentificacion },
+            { "Telefono", txtTelefono },
+            { "Correo", txtCorreo },
+            { "Direccion", txtDireccion }
         };
 
-        foreach (DataGridViewColumn col in _grid.Columns)
-            if (titulos.TryGetValue(col.Name, out var titulo))
-                col.HeaderText = titulo;
-
-        _grid.Columns["Id"]!.FillWeight = 28;
-        _grid.Columns["Estado"]!.FillWeight = 45;
-        _grid.Columns["Telefono"]!.FillWeight = 78;
-        _grid.Columns["Identificacion"]!.FillWeight = 85;
+        for (Object[] par : obligatorios) {
+            JTextField campo = (JTextField) par[1];
+            if (campo.getText().trim().isEmpty()) {
+                campo.requestFocusInWindow();
+                return (String) par[0];
+            }
+        }
+        return null;
     }
 
-    private void Mensaje(string texto, bool correcto)
-    {
-        _lblEstado.Text = (correcto ? "OK  -  " : "ERROR  -  ") + texto;
-        _lblEstado.ForeColor = correcto ? Color.FromArgb(0, 110, 60) : Color.FromArgb(170, 0, 0);
+    private void limpiarFormulario() {
+        for (JTextField t : new JTextField[] { txtNombres, txtApellidos, txtIdentificacion,
+                                               txtTelefono, txtCorreo, txtDireccion }) {
+            t.setText("");
+        }
+        chkEstado.setSelected(true);
+        txtNombres.requestFocusInWindow();
+    }
+
+    private void mensaje(String texto, boolean correcto) {
+        lblEstado.setText((correcto ? "OK  -  " : "ERROR  -  ") + texto);
+        lblEstado.setForeground(correcto ? new Color(0, 110, 60) : new Color(170, 0, 0));
+    }
+
+    // ---------- Modelo de la tabla ----------
+
+    /** Adapta la lista de clientes a lo que la JTable sabe pintar. */
+    private static class ModeloClientes extends AbstractTableModel {
+
+        private static final String[] COLUMNAS = {
+            "ID", "Nombres", "Apellidos", "Identificacion",
+            "Telefono", "Correo", "Direccion", "Estado"
+        };
+
+        private List<Cliente> datos = new ArrayList<>();
+
+        void reemplazar(List<Cliente> nuevos) {
+            datos = nuevos;
+            fireTableDataChanged();
+        }
+
+        @Override
+        public int getRowCount() {
+            return datos.size();
+        }
+
+        @Override
+        public int getColumnCount() {
+            return COLUMNAS.length;
+        }
+
+        @Override
+        public String getColumnName(int col) {
+            return COLUMNAS[col];
+        }
+
+        @Override
+        public Class<?> getColumnClass(int col) {
+            return switch (col) {
+                case 0 -> Integer.class;
+                case 7 -> Boolean.class;
+                default -> String.class;
+            };
+        }
+
+        @Override
+        public Object getValueAt(int fila, int col) {
+            Cliente c = datos.get(fila);
+            return switch (col) {
+                case 0 -> c.getId();
+                case 1 -> c.getNombres();
+                case 2 -> c.getApellidos();
+                case 3 -> c.getIdentificacion();
+                case 4 -> c.getTelefono();
+                case 5 -> c.getCorreo();
+                case 6 -> c.getDireccion();
+                case 7 -> c.isEstado();
+                default -> "";
+            };
+        }
     }
 }
 
 
 --------------------------------------------------------------------------------
- 6.8  app/GestionClientes/Program.cs
+ 7.11  app-java/src/gestionclientes/Main.java
 --------------------------------------------------------------------------------
 
-using System.Runtime.InteropServices;
+package gestionclientes;
 
-namespace GestionClientes;
+import java.util.List;
+import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 
-internal static class Program
-{
-    // Una aplicacion WinExe no tiene consola propia: la tomamos prestada
-    // de la ventana de comandos que la invoco para el modo --prueba.
-    [DllImport("kernel32.dll")]
-    private static extern bool AttachConsole(int dwProcessId);
+public final class Main {
 
-    [STAThread]
-    private static int Main(string[] args)
-    {
-        // Modo de verificacion por consola: GestionClientes.exe --prueba
+    public static void main(String[] args) {
+        // Modo de verificacion por consola: java ... gestionclientes.Main --prueba
         // Ejecuta prueba de conexion + insercion + consulta sin abrir la ventana.
-        if (args.Length > 0 && (args[0] == "--prueba" || args[0] == "--selftest"))
-            return PruebaConsola();
+        if (args.length > 0 && (args[0].equals("--prueba") || args[0].equals("--selftest"))) {
+            System.exit(pruebaConsola());
+        }
 
-        ApplicationConfiguration.Initialize();
-        Application.Run(new FormClientes());
-        return 0;
+        try {
+            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+        } catch (Exception ignorado) {
+            // Si el aspecto del sistema no esta disponible se usa el de Java.
+        }
+
+        SwingUtilities.invokeLater(() -> new VentanaClientes().setVisible(true));
     }
 
-    private static int PruebaConsola()
-    {
-        AttachConsole(-1); // -1 = ATTACH_PARENT_PROCESS
-        var repo = new ClientesRepositorio();
+    private static int pruebaConsola() {
+        ClientesRepositorio repo = new ClientesRepositorio();
 
-        try
-        {
-            Console.WriteLine("Cadena de conexion : " + Conexion.CadenaParaMostrar());
-            Console.WriteLine("Servidor / BD      : " + repo.ProbarConexion());
+        try {
+            System.out.println("Cadena de conexion : " + Conexion.cadenaParaMostrar());
+            System.out.println("Servidor / BD      : " + repo.probarConexion());
 
-            var antes = repo.Consultar().Count;
-            Console.WriteLine($"Clientes antes     : {antes}");
+            int antes = repo.consultar().size();
+            System.out.println("Clientes antes     : " + antes);
 
-            var marca = DateTime.Now.ToString("HHmmssfff");
-            var id = repo.Guardar(new Cliente
-            {
-                Nombres        = "Prueba",
-                Apellidos      = "Consola",
-                Identificacion = "T" + marca,
-                Telefono       = "3000000000",
-                Correo         = $"prueba{marca}@correo.com",
-                Direccion      = "Registro creado por la prueba automatica",
-                Estado         = true
-            });
-            Console.WriteLine($"Insertado IdCliente: {id}");
+            String marca = String.valueOf(System.currentTimeMillis() % 1000000000L);
 
-            var despues = repo.Consultar();
-            Console.WriteLine($"Clientes despues   : {despues.Count}");
+            Cliente c = new Cliente();
+            c.setNombres("Prueba");
+            c.setApellidos("Consola");
+            c.setIdentificacion("T" + marca);
+            c.setTelefono("3000000000");
+            c.setCorreo("prueba" + marca + "@correo.com");
+            c.setDireccion("Registro creado por la prueba automatica");
+            c.setEstado(true);
 
-            var ok = despues.Count == antes + 1 && despues.Any(c => c.Id == id);
-            Console.WriteLine(ok ? "RESULTADO: OK" : "RESULTADO: FALLO");
+            int id = repo.guardar(c);
+            System.out.println("Insertado IdCliente: " + id);
+
+            List<Cliente> despues = repo.consultar();
+            System.out.println("Clientes despues   : " + despues.size());
+
+            boolean ok = despues.size() == antes + 1
+                    && despues.stream().anyMatch(x -> x.getId() == id);
+
+            System.out.println(ok ? "RESULTADO: OK" : "RESULTADO: FALLO");
             return ok ? 0 : 1;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine("RESULTADO: FALLO - " + ex.Message);
+
+        } catch (Exception ex) {
+            System.out.println("RESULTADO: FALLO - " + ex.getMessage());
             return 1;
         }
     }
@@ -928,40 +1272,56 @@ internal static class Program
 
 
 ================================================================================
- 7. COMO FUNCIONA, EN UNA PAGINA
+ 8. COMO FUNCIONA, EN UNA PAGINA
 ================================================================================
 
  El flujo que pide la practica es este, y en el codigo se ve asi:
 
-   Presentation Tier          FormClientes.cs
-   (formulario)               recoge los datos y valida que no haya vacios
+   Presentation Tier          VentanaClientes.java
+   (formulario Swing)         recoge los datos y valida que no haya vacios
           |
           v
-   Connection String          appsettings.json + Conexion.cs
-   (servidor + BD +           una sola cadena, leida al arrancar
+   Connection String          conexion.properties + Conexion.java
+   (servidor + BD +           una sola URL JDBC, leida al arrancar
     credenciales)
           |
           v
-   Database Server            ClientesRepositorio.cs
-   (SGBD)                     abre SqlConnection, ejecuta INSERT o SELECT
+   Database Server            ClientesRepositorio.java
+   (SGBD)                     abre la Connection y ejecuta INSERT o SELECT
 
- Tres detalles que valen puntos y conviene saber explicar:
+ Cuatro detalles que valen puntos y conviene saber explicar:
 
- 1) Parametros en vez de concatenar texto.
-    El INSERT usa @Nombres, @Apellidos, etc. en lugar de pegar los valores
+ 1) PreparedStatement en vez de concatenar texto.
+    El INSERT usa ? y luego setString(1, ...), en lugar de pegar los valores
     dentro de la cadena SQL. Evita la inyeccion SQL y respeta los tipos y
     longitudes de las columnas.
 
- 2) SCOPE_IDENTITY().
+ 2) getGeneratedKeys().
     Despues del INSERT se pide el Id que SQL Server acaba de generar, y por
     eso la app puede mostrar "IdCliente asignado: 6". Es la prueba de que el
     registro se guardo en el servidor y no solo en memoria.
 
- 3) using en cada conexion.
-    "using var cn = new SqlConnection(...)" cierra y devuelve la conexion al
-    pool al terminar el metodo, aunque se lance una excepcion.
+ 3) try-with-resources.
+    "try (Connection cn = Conexion.abrir(); ...)" cierra la conexion y el
+    statement al terminar el bloque, aunque se lance una excepcion.
 
- Y un detalle de la interfaz: la grilla se llena con
- "_grid.DataSource = new BindingList<Cliente>(clientes)". El DataGridView
- crea las columnas solo, a partir de las propiedades de la clase Cliente.
+ 4) AbstractTableModel.
+    La JTable no sabe nada de la clase Cliente: el modelo ModeloClientes
+    traduce la lista a filas y columnas, y getColumnClass hace que la
+    columna Estado se pinte como casilla de verificacion.
+
+ Diferencias con la version anterior en C#, por si alguien compara:
+
+   C# / WinForms                      Java / Swing
+   ------------------------------     ------------------------------
+   appsettings.json                   conexion.properties
+   SqlConnection                      Connection (DriverManager)
+   SqlCommand + parametros            PreparedStatement + ?
+   SCOPE_IDENTITY()                   getGeneratedKeys()
+   DataGridView + BindingList         JTable + AbstractTableModel
+   MessageBox.Show                    JOptionPane.showMessageDialog
+   using var                          try-with-resources
+   Conecta por memoria compartida     Exige TCP/IP habilitado
+
+ El script SQL es exactamente el mismo en las dos versiones.
 

@@ -5,10 +5,10 @@ IdCliente|Nombres|Apellidos|Identificacion|Telefono|Correo|Estado
 3|Maria|Gomez|1003003003|3003334455|maria.gomez@correo.com|1
 4|Jorge|Martinez|1004004004|3004445566|jorge.martinez@correo.com|1
 5|Lucia|Pena|1005005005|3005556677|lucia.pena@correo.com|1
-6|Prueba|Consola|T133734044|3000000000|prueba133734044@correo.com|1
+6|Prueba|Consola|T911385223|3000000000|prueba911385223@correo.com|1
 
 (6 rows affected)
 
 -- SELECT ejecutado con sqlcmd directamente contra el SGBD, sin pasar por la
--- aplicacion. El IdCliente 6 (Prueba / Consola) lo inserto la aplicacion:
+-- aplicacion. El IdCliente 6 (Prueba / Consola) lo inserto la aplicacion Java:
 -- es la evidencia del punto D. Se elimino despues para dejar la tabla limpia.
